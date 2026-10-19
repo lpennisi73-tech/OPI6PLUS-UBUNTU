@@ -151,7 +151,7 @@ Sans `--install`, le build s'arrête après les paquets ; l'installation se fait
 | `--jobs <n>` | nombre de compilations en parallèle (défaut : nombre de cœurs, ou `SKY1_JOBS` de distcc-env.sh) |
 | `--base-config <fichier>` | config de départ (défaut : `/boot/config-*-generic` la plus récente) |
 | `--build-dir <dossier>` | dossier de build (défaut : `/usr/src/build/sky1-kernel`) |
-| `--skip-download` | ne pas retélécharger les sources (tarball déjà présent) |
+| `--skip-download` | pas d'accès réseau : le tarball doit être présent ; l'arbre est recréé depuis le tarball s'il a été supprimé |
 | `--skip-patches` | ne pas appliquer les patches (sources déjà patchées) |
 | `--skip-config` | garder la `.config` existante |
 | `--skip-build` | ne pas compiler (ex. : seulement installer avec `--install`) |
@@ -278,7 +278,8 @@ Linux 7.2** dans ce dépôt (`patches/sky1-7.2/`, décisions patch par patch dan
 
 - 43 patches Sky1-Linux, dont 11 adaptés aux changements de Linux 7.2 ;
 - `0044` (BOOKWORM) : pilotes du constructeur adaptés aux API de Linux 7.2 ;
-- `0045` (BOOKWORM) : écran fantôme, cache firmware du VPU, deux avertissements noyau.
+- `0045` (BOOKWORM) : écran fantôme, cache firmware du VPU, deux avertissements noyau ;
+- `0046` (BOOKWORM) : VPU bloqué quand un lecteur se déplace dans la vidéo pendant sa mise en route.
 
 La config Sky1 de référence est copiée dans `config/sky1/` : le build ne dépend plus de linux-sky1.
 Pour porter la série sur une version suivante (7.3…), voir `tools/portage-sky1/README.md`.
@@ -325,10 +326,14 @@ mise en veille (GNOME masque « Mettre en veille »). L'**extinction des écrans
 Diagnostic prévu avec la console série (`ttyAMA2`, 115200 bauds).
 
 ### Vidéo dans le bureau : décodage par le CPU
-Le VPU décode correctement (environ 1000 images/s en 664×360 H.264), mais le lecteur GNOME (Showtime)
-n'affiche pas ses images (image verte figée). `config/environment.d/90-sky1-gst-v4l2-rank.conf` retire
-donc les décodeurs V4L2 du choix automatique de GStreamer : les lecteurs décodent par le CPU, sans
-difficulté. Le VPU reste utilisable explicitement :
+Le VPU décode correctement (environ 200 images/s en 1080p H.264) et ses images s'affichent dans GTK4,
+mais le lecteur GNOME (Showtime) reste sur un écran noir : il reprend la vidéo à la dernière position,
+et ce déplacement juste après le démarrage bloque le VPU. Un premier défaut du pilote est corrigé
+(patch `0046`) ; le second vient du firmware de CIX, qui perd son contexte quand la file de sortie est
+réallouée en cours de décodage (l'affichage GTK garde la dernière image) et refuse l'autre façon de
+faire. `config/environment.d/90-sky1-gst-v4l2-rank.conf` retire donc les décodeurs V4L2 du choix
+automatique de GStreamer : les lecteurs décodent par le CPU, sans difficulté (un film 1080p H.264
+passe sans saccade). Le VPU reste utilisable explicitement :
 ```bash
 gst-launch-1.0 filesrc location=video.mp4 ! qtdemux ! h264parse ! v4l2h264dec ! fakesink
 ```

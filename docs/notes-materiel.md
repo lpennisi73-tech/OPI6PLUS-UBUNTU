@@ -138,9 +138,17 @@ le build relancé.
   `aout=alsa` dans `~/.config/vlc/vlcrc` (ou *Outils → Préférences → Audio → Module de sortie :
   ALSA*), ou ponctuellement `vlc --aout=alsa`.
 - **Showtime (lecteur GNOME)** : avec le VPU (`v4l2h264dec`, choisi d'office par GStreamer 1.28)
-  image verte figée, sans son ; le décodage VPU est correct, c'est l'affichage VPU → GTK4 qui
-  échoue. `config/environment.d/90-sky1-gst-v4l2-rank.conf` sort les décodeurs V4L2 de
-  l'autoplug : décodage CPU, image et son parfaits. Décodage matériel dans GTK : à étudier.
+  image verte figée, sans son (2026-10-16). Depuis les firmwares de CIX (2026-10-18), l'affichage
+  VPU → GTK4 fonctionne (`gtk4paintablesink`, playbin3, avec ou sans `glsinkbin` : film fluide),
+  mais Showtime reste noir : il reprend la vidéo à la dernière position, donc se déplace juste après
+  le démarrage. (1) Déplacement pendant le 1er changement de source : le pilote croyait garder les
+  paramètres de séquence, le firmware refusait le vidage de sortie (« Output flush only allowed when
+  stopped, or after response _SEQUENCE_PARAMETERS ») et `STREAMON(CAPTURE)` échouait : corrigé par le
+  patch 0046. (2) Déplacement après la 1re image : GTK garde la dernière image (dmabuf du VPU), la file
+  de sortie est réallouée pendant que l'entrée tourne, le pilote met le firmware en pause, qui perd son
+  contexte et ne sort plus rien ; vider la sortie sans pause est refusé par le firmware. Non corrigé
+  (firmware fermé) : `config/environment.d/90-sky1-gst-v4l2-rank.conf` sort les décodeurs V4L2 de
+  l'autoplug, décodage CPU, image et son parfaits (choix utilisateur du 2026-10-19).
 - **Firmwares VPU** : paquet officiel `cix-vpu-firmware` de CIX (depuis le 2026-10-18 ; avant : copie de
   Sky1-Linux/sky1-firmware, plus ancienne et sans licence). Sans eux, le pilote amvx corrompait sa liste
   interne (corrigé dans le patch 0045). Voir `firmware/README.md`.

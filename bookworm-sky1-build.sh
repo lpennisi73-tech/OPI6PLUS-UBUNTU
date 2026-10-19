@@ -65,8 +65,8 @@ NO_DBG=false
 # PARSE ARGUMENTS
 # =============================================================================
 usage() {
-    grep "^#" "$0" | grep -E "Usage:|Options:|Exemple:" -A 100 | \
-        sed 's/^# //' | sed 's/^#//'
+    # En-tête du script seulement (de « Usage: » à la ligne de fermeture « # ==== »)
+    awk 'NR > 2 && /^# =+$/ { exit } /^# Usage:/ { p = 1 } p { sub(/^# ?/, ""); print }' "$0"
     exit 0
 }
 
@@ -221,20 +221,22 @@ if ! $SKIP_DOWNLOAD; then
         ok "Kernel déjà présent: $TARBALL"
     fi
 
-    # Extraire si nécessaire
-    if [[ ! -d "$KERNEL_SRC_DIR" ]]; then
-        info "Extraction ${KERNEL_TARBALL}..."
-        $DRY_RUN || tar xf "$TARBALL" -C "$BUILD_DIR"
-        ok "Kernel extrait: $KERNEL_SRC_DIR"
-    else
-        ok "Sources déjà extraites: $KERNEL_SRC_DIR"
-    fi
-
 else
     ok "Download skippé (--skip-download)"
 fi
 
-[[ ! -d "$KERNEL_SRC_DIR" ]] && die "Sources kernel introuvables: $KERNEL_SRC_DIR"
+# Extraire si nécessaire (aussi avec --skip-download : l'option évite seulement le réseau,
+# et un arbre supprimé pour repartir de zéro doit être recréé depuis le tarball)
+if [[ ! -d "$KERNEL_SRC_DIR" ]]; then
+    [[ -f "$TARBALL" ]] || die "Tarball introuvable: $TARBALL (relancer sans --skip-download)"
+    info "Extraction ${KERNEL_TARBALL}..."
+    $DRY_RUN || tar xf "$TARBALL" -C "$BUILD_DIR"
+    ok "Kernel extrait: $KERNEL_SRC_DIR"
+else
+    ok "Sources déjà extraites: $KERNEL_SRC_DIR"
+fi
+
+$DRY_RUN || [[ -d "$KERNEL_SRC_DIR" ]] || die "Sources kernel introuvables: $KERNEL_SRC_DIR"
 
 cd "$KERNEL_SRC_DIR"
 

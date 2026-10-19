@@ -18,7 +18,7 @@ d'installer un fichier inconnu. Pour passer à une nouvelle version : la tester,
 
 Validé le 2026-10-18 sur Orange Pi 6 Plus : le noyau charge bien `h264dec.fwb` de CIX
 (402 304 octets, sha256 `e92bf40d…`). Le décodage H.264 donne des images identiques, octet pour octet,
-à l'ancien firmware, à la même vitesse (environ 850 images/s en 1080p).
+à l'ancien firmware, à la même vitesse (environ 850 images/s sur une vidéo 664×360 ; environ 200 images/s en 1080p).
 
 ## Historique
 
