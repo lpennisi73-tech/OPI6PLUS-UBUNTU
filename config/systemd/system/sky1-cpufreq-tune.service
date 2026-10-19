@@ -1,0 +1,15 @@
+# BOOKWORM Sky1 — gouverneur CPU réglé pour le bureau (voir /etc/default/sky1-cpufreq)
+# Seulement sur l'entrée GRUB Sky1 (acpi=off) : le noyau générique de secours n'a pas de cpufreq.
+[Unit]
+Description=BOOKWORM Sky1 : réglage du gouverneur CPU
+After=systemd-modules-load.service systemd-udevd.service
+ConditionPathExists=/sys/devices/system/cpu
+ConditionKernelCommandLine=acpi=off
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/bookworm-sky1/sky1-cpufreq-tune
+
+[Install]
+WantedBy=multi-user.target

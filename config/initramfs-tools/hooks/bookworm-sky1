@@ -1,0 +1,22 @@
+#!/bin/sh
+# =============================================================================
+# bookworm-sky1 — hook initramfs-tools (paquet bookworm-sky1-settings)
+# BOOKWORM Sky1 Kernel Builder
+#
+# Copie les règles udev Sky1 (90-sky1-*.rules : USB-C et GPU sans veille runtime) dans
+# l'initramfs. Les contrôleurs USB-C démarrent déjà dans l'initramfs : sans ces règles, leur
+# xHCI peut passer en veille avant le changement de racine et ne plus repartir
+# (« timeout waiting for xhci_ready »). Sert à l'initrd du système live (casper) ;
+# le système installé (dracut) reçoit les mêmes règles par install_items.
+# =============================================================================
+PREREQ="udev"
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+mkdir -p "$DESTDIR/usr/lib/udev/rules.d"
+for rules in /usr/lib/udev/rules.d/90-sky1-*.rules; do
+    [ -f "$rules" ] && cp -p "$rules" "$DESTDIR/usr/lib/udev/rules.d/"
+done
+exit 0

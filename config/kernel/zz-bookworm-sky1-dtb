@@ -1,0 +1,35 @@
+#!/bin/sh
+# =============================================================================
+# zz-bookworm-sky1-dtb — DTB Sky1 par noyau dans /boot/dtb (paquet bookworm-sky1-settings)
+# BOOKWORM Sky1 Kernel Builder
+#
+# Installé dans /etc/kernel/postinst.d et /etc/kernel/postrm.d (avant zz-update-grub).
+# postinst.d : copie /usr/lib/linux-image-<kver>/cix/<dtb> en /boot/dtb/<dtb>-<kver>.dtb
+# postrm.d   : supprime ce fichier.
+# Un DTB par noyau : sinon un noyau peut démarrer avec le devicetree d'un autre.
+# Seuls les noyaux Sky1 (-sky1-*) sont concernés. Usage : <hook> <kver> [<image>]
+# =============================================================================
+set -e
+
+kv="$1"
+case "$kv" in *-sky1-*) ;; *) exit 0 ;; esac
+
+SKY1_DTB_NAME="sky1-orangepi-6-plus.dtb"
+[ -r /etc/default/bookworm-sky1 ] && . /etc/default/bookworm-sky1
+dst="/boot/dtb/${SKY1_DTB_NAME%.dtb}-${kv}.dtb"
+
+case "$0" in
+    */postrm.d/*)
+        rm -f "$dst"
+        ;;
+    *)
+        src="/usr/lib/linux-image-${kv}/cix/${SKY1_DTB_NAME}"
+        if [ ! -f "$src" ]; then
+            echo "bookworm-sky1 : $src absent, pas de DTB pour $kv" >&2
+            exit 0
+        fi
+        mkdir -p /boot/dtb
+        install -m 644 "$src" "$dst"
+        echo "bookworm-sky1 : DTB $dst"
+        ;;
+esac

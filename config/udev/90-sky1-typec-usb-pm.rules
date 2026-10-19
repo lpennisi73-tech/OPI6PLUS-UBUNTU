@@ -1,0 +1,9 @@
+# BOOKWORM Sky1 — ports USB-C (Type-C rts5453) : pas de mise en veille runtime.
+# En D3, ni le contrôleur cdns ni son xHCI ne se réveillent au branchement d'un appareil :
+# le xHCI est créé à l'attache Type-C puis passe en veille avant l'énumération, et
+# l'appareil n'apparaît jamais. Constaté sur 7.2.11 (disque USB 3 sur le port USB-C :
+# rien, puis 10000M une fois la veille du xHCI coupée).
+# 9010000 : port USB-C 0 (alimentation), 9080000 : port USB-C 1 (données).
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="9010000.usb-controller|9080000.usb-controller", ATTR{power/control}="on"
+# xHCI enfant (xhci-hcd.N.auto, numéro variable, recréé à chaque attache)
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="xhci-hcd.*", KERNELS=="9010000.usb-controller|9080000.usb-controller", ATTR{power/control}="on"

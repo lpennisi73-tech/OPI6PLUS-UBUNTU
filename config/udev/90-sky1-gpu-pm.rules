@@ -1,0 +1,8 @@
+# BOOKWORM Sky1 — GPU Mali-G720 (panthor) : pas de mise en veille runtime.
+# La veille runtime (autosuspend 50 ms) peut échouer sur Sky1 : le firmware CSF ne répond
+# plus (« CSG update request timedout », « Failed to stop MCU », « AS_ACTIVE bit stuck »),
+# et panthor s'interbloque (la veille attend le reset, qui attend le réveil). Les processus
+# graphiques restent alors en état D et la session ne peut plus être arrêtée.
+# Constaté sur 7.2.11 (2026-10-16 et 2026-10-17) et sous Gentoo. GPU maintenu éveillé :
+# la fréquence baisse toujours au repos (devfreq), et le bureau est plus fluide.
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="15000000.gpu", ATTR{power/control}="on"

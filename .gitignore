@@ -1,0 +1,48 @@
+# Logs de compilation
+logs/*.log
+logs/*.txt
+
+# Répertoire de build kernel
+~/build/
+/build/
+
+# Tarballs kernel
+*.tar.xz
+*.tar.gz
+*.tar.bz2
+
+# Binaires kernel compilés
+*.o
+*.ko
+*.a
+vmlinux
+Image
+zImage
+
+# Config kernel générée
+linux-*/.config
+linux-*/.config.old
+
+# Aucun firmware dans le dépôt : voir firmware/README.md
+
+# Fichiers système
+.DS_Store
+*~
+*.swp
+*.rej
+*.orig
+*.bak*
+__pycache__/
+*.pyc
+linux-*/.sky1-patched
+.env
+*.token
+*.secret
+
+*.bk
+
+# Réglages distcc propres à la machine (adresse du serveur)
+distcc-env.local
+
+# État local de check-sky1-updates.sh
+.check-state/

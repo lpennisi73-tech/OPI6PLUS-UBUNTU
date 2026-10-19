@@ -1,0 +1,42 @@
+#!/bin/bash
+# =============================================================================
+# sky1-cpufreq-tune — applique /etc/default/sky1-cpufreq à toutes les policies cpufreq
+# BOOKWORM Sky1 Kernel Builder (lancé par sky1-cpufreq-tune.service)
+#
+# Sous Ubuntu, cpupower exige linux-tools-<kver>, absent pour un noyau maison : on écrit
+# directement dans sysfs. scmi_cpufreq est un module chargé par udev : on attend les policies.
+# =============================================================================
+
+CONF=/etc/default/sky1-cpufreq
+GOVERNOR=ondemand
+UP_THRESHOLD=30
+SAMPLING_DOWN_FACTOR=50
+[[ -r "$CONF" ]] && . "$CONF"
+
+CPUFREQ=/sys/devices/system/cpu/cpufreq
+for _ in $(seq 30); do
+    compgen -G "$CPUFREQ/policy*" >/dev/null && break
+    sleep 1
+done
+if ! compgen -G "$CPUFREQ/policy*" >/dev/null; then
+    echo "aucune policy cpufreq (pilote scmi_cpufreq absent ?)" >&2
+    exit 1
+fi
+
+rc=0
+for p in "$CPUFREQ"/policy*; do
+    if ! grep -qw "$GOVERNOR" "$p/scaling_available_governors"; then
+        echo "${p##*/} : gouverneur $GOVERNOR indisponible" >&2
+        rc=1
+        continue
+    fi
+    echo "$GOVERNOR" > "$p/scaling_governor" || { rc=1; continue; }
+    if [[ "$GOVERNOR" == ondemand && -d "$p/ondemand" ]]; then
+        echo "$UP_THRESHOLD" > "$p/ondemand/up_threshold" || rc=1
+        echo "$SAMPLING_DOWN_FACTOR" > "$p/ondemand/sampling_down_factor" || rc=1
+        echo "${p##*/} : ondemand up_threshold=$UP_THRESHOLD sampling_down_factor=$SAMPLING_DOWN_FACTOR"
+    else
+        echo "${p##*/} : $GOVERNOR"
+    fi
+done
+exit $rc

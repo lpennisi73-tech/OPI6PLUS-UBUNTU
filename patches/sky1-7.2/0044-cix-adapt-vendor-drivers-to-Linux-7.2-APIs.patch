@@ -1,0 +1,1037 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Fri, 16 Oct 2026 12:40:00 +0200
+Subject: [PATCH] cix: adapt vendor drivers to Linux 7.2 APIs
+
+The vendor drivers carried by this series were written for Linux 7.0 and
+use kernel APIs that were removed or renamed in 7.2:
+
+- clk: clk_ops.round_rate removed -> .determine_rate with
+  divider_determine_rate() (clk-sky1-audss).
+- drm: struct drm_atomic_state renamed to struct drm_atomic_commit,
+  drm_atomic_state_put() -> drm_atomic_commit_put().
+- drm: DRM_COLOR_FORMAT_* bitmasks replaced by the drm_output_color_format
+  enum; display_info.color_formats is now a mask of
+  BIT(DRM_OUTPUT_COLOR_FORMAT_*), which has the same values (BIT(0..3)).
+- drm: drm_atomic_private_obj_init() no longer takes an initial state;
+  linlondp private objects get an .atomic_create_state hook (same pattern
+  as upstream komeda).
+- drm: drm_panel_init() removed -> devm_drm_panel_alloc() (cix_edp_panel).
+- media: strncpy() removed -> strscpy() (amvx).
+
+No functional change intended.
+
+[added for Linux 7.2 by BOOKWORM]
+---
+ 15 files changed, 226 insertions(+), 171 deletions(-)
+
+diff --git a/drivers/clk/cix/clk-sky1-audss.c b/drivers/clk/cix/clk-sky1-audss.c
+index 174058167d5625481490db83c731d72a23daef18..e806dcd08a08b1be629f4d7acf887fc95a968cc2 100644
+--- a/drivers/clk/cix/clk-sky1-audss.c
++++ b/drivers/clk/cix/clk-sky1-audss.c
+@@ -303,13 +303,13 @@ static unsigned long sky1_audss_div_recalc_rate(struct clk_hw *hw,
+ 				   div->flags, div->width);
+ }
+ 
+-static long sky1_audss_div_round_rate(struct clk_hw *hw, unsigned long rate,
+-				      unsigned long *prate)
++static int sky1_audss_div_determine_rate(struct clk_hw *hw,
++					 struct clk_rate_request *req)
+ {
+ 	struct clk_divider *div = to_clk_divider(hw);
+ 
+-	return divider_round_rate(hw, rate, prate, div->table,
+-				  div->width, div->flags);
++	return divider_determine_rate(hw, req, div->table, div->width,
++				      div->flags);
+ }
+ 
+ static int sky1_audss_div_set_rate(struct clk_hw *hw, unsigned long rate,
+@@ -340,7 +340,7 @@ static int sky1_audss_div_set_rate(struct clk_hw *hw, unsigned long rate,
+ 
+ static const struct clk_ops sky1_audss_div_ops = {
+ 	.recalc_rate = sky1_audss_div_recalc_rate,
+-	.round_rate = sky1_audss_div_round_rate,
++	.determine_rate = sky1_audss_div_determine_rate,
+ 	.set_rate = sky1_audss_div_set_rate,
+ };
+ 
+diff --git a/drivers/gpu/drm/cix/cix_virtual.c b/drivers/gpu/drm/cix/cix_virtual.c
+index c3877c4cf4f643183aa5817a06699bf2d382350e..b98d05844398e2225d825a97db5c0400099e59a5 100644
+--- a/drivers/gpu/drm/cix/cix_virtual.c
++++ b/drivers/gpu/drm/cix/cix_virtual.c
+@@ -235,9 +235,9 @@ cix_virtual_bind(struct device *comp, struct device *master,
+ 	}
+ 
+ 	/*  Set supported color formats */
+-	connector->display_info.color_formats = DRM_COLOR_FORMAT_RGB444   |
+-						DRM_COLOR_FORMAT_YCBCR422 |
+-						DRM_COLOR_FORMAT_YCBCR420;
++	connector->display_info.color_formats = BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444)   |
++						BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422) |
++						BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/gpu/drm/cix/dptx/cix_edp_panel.c b/drivers/gpu/drm/cix/dptx/cix_edp_panel.c
+index 6081aa19cdf3cd510a698f909a9091a54f91f149..9c9d6acebcb1ceabb509fbaa5ae510c4ee2a7543 100644
+--- a/drivers/gpu/drm/cix/dptx/cix_edp_panel.c
++++ b/drivers/gpu/drm/cix/dptx/cix_edp_panel.c
+@@ -627,9 +627,10 @@ static int cix_edp_panel_probe(struct device *dev, const struct panel_desc *desc
+ 
+ 	dev_info(dev, "%s, begin\n", __func__);
+ 
+-	panel = devm_kzalloc(dev, sizeof(*panel), GFP_KERNEL);
+-	if (!panel)
+-		return -ENOMEM;
++	panel = devm_drm_panel_alloc(dev, struct cix_edp_panel, base,
++				     &cix_edp_panel_funcs, DRM_MODE_CONNECTOR_eDP);
++	if (IS_ERR(panel))
++		return PTR_ERR(panel);
+ 
+ 	panel->enabled = false;
+ 	panel->prepared = false;
+@@ -689,9 +690,6 @@ static int cix_edp_panel_probe(struct device *dev, const struct panel_desc *desc
+ 	if (desc->bpc != 6 && desc->bpc != 8)
+ 		dev_warn(dev, "Expected bpc in {6,8} but got: %u\n", desc->bpc);
+ 
+-	drm_panel_init(&panel->base, dev, &cix_edp_panel_funcs,
+-		       DRM_MODE_CONNECTOR_eDP);
+-
+ 	if (has_acpi_companion(dev)) {
+ 		err = drm_panel_acpi_backlight(&panel->base);
+ 	} else {
+diff --git a/drivers/gpu/drm/cix/dptx/trilin_dptx.c b/drivers/gpu/drm/cix/dptx/trilin_dptx.c
+index 9a728dc1c2eac14484bd924d0602dad914db3370..80b4e0ab809d0501d37c95c0c3b7bfd773391e5a 100644
+--- a/drivers/gpu/drm/cix/dptx/trilin_dptx.c
++++ b/drivers/gpu/drm/cix/dptx/trilin_dptx.c
+@@ -2845,8 +2845,8 @@ int trilin_dp_pm_resume_early(struct trilin_dp *dp)
+ 	struct drm_connector *connector = &dp->connector.base;
+ 	struct drm_device *dev = connector->dev;
+ 	struct drm_modeset_acquire_ctx ctx;
+-	struct drm_atomic_state *old_state = dev->mode_config.suspend_state;
+-	struct drm_atomic_state *new_state = NULL;
++	struct drm_atomic_commit *old_state = dev->mode_config.suspend_state;
++	struct drm_atomic_commit *new_state = NULL;
+ 	struct drm_connector_state *conn_state;
+ 	struct drm_connector *conn;
+ 	int ret, i;
+@@ -2883,13 +2883,13 @@ int trilin_dp_pm_resume_early(struct trilin_dp *dp)
+ 		drm_mode_prune_invalid(dev, &conn->modes, false);
+ 	}
+ 
+-	drm_atomic_state_put(old_state);
++	drm_atomic_commit_put(old_state);
+ 	dev->mode_config.suspend_state = new_state;
+ 	new_state = NULL;
+ 
+ state_put:
+ 	if (new_state)
+-		drm_atomic_state_put(new_state);
++		drm_atomic_commit_put(new_state);
+ unlock:
+ 	DRM_MODESET_LOCK_ALL_END(dev, ctx, ret);
+ 	return ret;
+diff --git a/drivers/gpu/drm/cix/dptx/trilin_dptx.h b/drivers/gpu/drm/cix/dptx/trilin_dptx.h
+index 87987eedf3fb4856eca916edf43600bb2bd3c96d..3e3ca7868068449b27652c9447e10f421d39a61a 100644
+--- a/drivers/gpu/drm/cix/dptx/trilin_dptx.h
++++ b/drivers/gpu/drm/cix/dptx/trilin_dptx.h
+@@ -296,7 +296,7 @@ struct trilin_connector {
+ 	struct trilin_dp *dp;
+ 	struct trilin_dp_panel *dp_panel;
+ 	enum trilin_output_type type;
+-	struct drm_atomic_state *state;
++	struct drm_atomic_commit *state;
+ 
+ 	struct trilin_dp_config config;
+ 	struct hdmi_drm_infoframe drm_infoframe;
+diff --git a/drivers/gpu/drm/cix/dptx/trilin_drm.c b/drivers/gpu/drm/cix/dptx/trilin_drm.c
+index 80aaa2ff8b78dfb6a4083d01f525643d8114f036..ef7848731baa096a1bde72a4bccaa9b9ba420602 100644
+--- a/drivers/gpu/drm/cix/dptx/trilin_drm.c
++++ b/drivers/gpu/drm/cix/dptx/trilin_drm.c
+@@ -143,7 +143,7 @@ trilin_dp_connector_detect(struct drm_connector *connector, bool force)
+ }
+ 
+ static int trilin_dp_connector_atomic_check(struct drm_connector *conn,
+-					    struct drm_atomic_state *state)
++					    struct drm_atomic_commit *state)
+ {
+ 	struct drm_connector_state *new_con_state =
+ 		drm_atomic_get_new_connector_state(state, conn);
+@@ -532,7 +532,7 @@ static const struct drm_connector_helper_funcs
+  */
+ static
+ struct drm_crtc *get_crtc_from_encoder(struct drm_encoder *encoder,
+-					  struct drm_atomic_state *state)
++					  struct drm_atomic_commit *state)
+ {
+ 	struct drm_connector *connector;
+ 	struct drm_connector_state *conn_state;
+@@ -549,7 +549,7 @@ struct drm_crtc *get_crtc_from_encoder(struct drm_encoder *encoder,
+ }
+ 
+ static bool trilin_dp_handle_psr_disable(struct drm_encoder *encoder,
+-				struct drm_atomic_state *state)
++				struct drm_atomic_commit *state)
+ {
+ 	struct drm_crtc *crtc;
+ 	struct drm_crtc_state *old_crtc_state;
+@@ -620,7 +620,7 @@ static bool is_same_mode_compare(struct trilin_dp *dp,
+ }
+ 
+ static void trilin_dp_encoder_enable(struct drm_encoder *encoder,
+-				struct drm_atomic_state *state)
++				struct drm_atomic_commit *state)
+ {
+ 	struct trilin_dp *dp = encoder_to_dp(encoder);
+ 	struct trilin_dp_panel *dp_panel = &dp->dp_panel;
+@@ -669,7 +669,7 @@ static void trilin_dp_encoder_enable(struct drm_encoder *encoder,
+ }
+ 
+ static void trilin_dp_encoder_disable(struct drm_encoder *encoder,
+-				struct drm_atomic_state *state)
++				struct drm_atomic_commit *state)
+ {
+ 	int rc;
+ 	struct trilin_dp *dp = encoder_to_dp(encoder);
+@@ -745,14 +745,14 @@ static u8 trilin_dp_cal_bpp(u8 bpc, int format)
+ 	u8 bpp = bpc * 3;
+ 
+ 	switch (format) {
+-	case DRM_COLOR_FORMAT_RGB444:
+-	case DRM_COLOR_FORMAT_YCBCR444:
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444):
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444):
+ 		bpp = bpc * 3;
+ 		break;
+-	case DRM_COLOR_FORMAT_YCBCR422:
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422):
+ 		bpp = bpc * 2;
+ 		break;
+-	case DRM_COLOR_FORMAT_YCBCR420:
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420):
+ 		bpp = bpc * 3 / 2;
+ 		break;
+ 	default:
+@@ -862,7 +862,7 @@ static bool compute_available_clock_rate(struct trilin_dp *dp,
+ 		struct drm_connector_state *connector_state, u8 suggest_bpc,
+ 		int clock, int color_format, int *rt_bpc, int *rt_bpp)
+ {
+-	int min_bpc = (color_format == DRM_COLOR_FORMAT_RGB444) ? 6 : 8;
++	int min_bpc = (color_format == BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444)) ? 6 : 8;
+ 	int bpc = max(suggest_bpc, min_bpc);
+ 	int bpp;
+ 	u8 max_lanes = dp->link_config.max_lanes;
+@@ -933,13 +933,13 @@ int trilin_dp_encoder_compute_config(struct drm_encoder *encoder,
+ 	u8 max_lanes = dp->link_config.max_lanes;
+ 	int link_rate = dp->link_config.max_rate;
+ 
+-	if (!(info_formats & DRM_COLOR_FORMAT_RGB444)) {
+-		info_formats |= DRM_COLOR_FORMAT_RGB444;
++	if (!(info_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444))) {
++		info_formats |= BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444);
+ 		DP_WARN("info_format=%0x, force support RGB444", info->color_formats);
+ 	}
+ 
+ 	const int COMMON_COLORS_FORMATS[] = {
+-		DRM_COLOR_FORMAT_RGB444, DRM_COLOR_FORMAT_YCBCR422, DRM_COLOR_FORMAT_YCBCR420};
++		BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444), BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422), BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420)};
+ 
+ 	for (i = 0; i < ARRAY_SIZE(COMMON_COLORS_FORMATS); i++) {
+ 		color_format = COMMON_COLORS_FORMATS[i];
+@@ -948,7 +948,7 @@ int trilin_dp_encoder_compute_config(struct drm_encoder *encoder,
+ 			success = compute_available_clock_rate(dp, connector_state, suggest_bpc,
+ 				adjusted_mode->clock, color_format, &bpc, &bpp);
+ 			if (success) {
+-				if (color_format != DRM_COLOR_FORMAT_RGB444)
++				if (color_format != BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444))
+ 					DP_INFO("Use YUV Format=0x%0x", color_format);
+ 				break;
+ 			}
+@@ -962,13 +962,13 @@ int trilin_dp_encoder_compute_config(struct drm_encoder *encoder,
+ 	}
+ 
+ 	switch (color_format) {
+-	case DRM_COLOR_FORMAT_YCBCR444:
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444):
+ 		format = TRILIN_DPSUB_FORMAT_YCBCR444;
+ 		break;
+-	case DRM_COLOR_FORMAT_YCBCR422:
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422):
+ 		format = TRILIN_DPSUB_FORMAT_YCBCR422;
+ 		break;
+-	case DRM_COLOR_FORMAT_YCBCR420:
++	case BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420):
+ 		format = TRILIN_DPSUB_FORMAT_YCBCR420;
+ 		break;
+ 	default:
+diff --git a/drivers/gpu/drm/cix/dptx/trilin_drm_mst.c b/drivers/gpu/drm/cix/dptx/trilin_drm_mst.c
+index 472da257d27a5dcafa5f83ab05aa330563c87317..289897c9b54d99249b89d91be48289d51f02d248 100644
+--- a/drivers/gpu/drm/cix/dptx/trilin_drm_mst.c
++++ b/drivers/gpu/drm/cix/dptx/trilin_drm_mst.c
+@@ -446,7 +446,7 @@ static enum drm_mode_status trilin_dp_mst_mode_valid(struct drm_connector *conne
+ 
+ static struct drm_encoder *
+ trilin_mst_atomic_best_encoder(struct drm_connector *connector,
+-			       struct drm_atomic_state *state)
++			       struct drm_atomic_commit *state)
+ {
+ 	struct drm_connector_state *connector_state =
+ 		drm_atomic_get_new_connector_state(state, connector);
+@@ -500,7 +500,7 @@ trilin_mst_atomic_best_encoder(struct drm_connector *connector,
+ }
+ 
+ static int trilin_dp_mst_conn_atomic_check(struct drm_connector *connector,
+-					   struct drm_atomic_state *state)
++					   struct drm_atomic_commit *state)
+ {
+ 	struct trilin_connector *conn = connector_to_trilin(connector);
+ 	struct trilin_dp *dp = conn->dp;
+@@ -651,7 +651,7 @@ _dp_mst_encoders_pre_enable_part2(struct trilin_encoder *mst_encoder)
+ 	struct drm_dp_mst_topology_mgr *mgr = dp->mst_mgr;
+ 	struct trilin_connector *conn = mst_encoder->connector;
+ 	struct drm_dp_mst_port *port = conn->port;
+-	struct drm_atomic_state *state = conn->state;
++	struct drm_atomic_commit *state = conn->state;
+ 
+ 	DP_MST_DEBUG("enter %p\n", state);
+ 
+@@ -671,14 +671,14 @@ static void _dp_mst_encoders_pre_disable(struct trilin_encoder *mst_encoder)
+ 	struct trilin_connector *conn = mst_encoder->connector;
+ 	struct trilin_dp_mst_private *mst = &dp->mst.private_info;
+ 	struct drm_dp_mst_topology_mgr *mgr = dp->mst_mgr;
+-	struct drm_atomic_state *state = conn->state;
++	struct drm_atomic_commit *state = conn->state;
+ 	struct drm_dp_mst_topology_state *old_mst_state, *new_mst_state,
+ 		*mst_state;
+ 	struct drm_dp_mst_atomic_payload *old_payload, *new_payload;
+ 
+ 	DP_MST_DEBUG("enter\n");
+ 	if (state == NULL) {
+-		DP_MST_INFO("drm_atomic_state is null???? (%p)\n", state);
++		DP_MST_INFO("drm_atomic_commit is null???? (%p)\n", state);
+ 		return;
+ 	}
+ 
+@@ -802,7 +802,7 @@ static int trilin_mst_encoder_atomic_check(struct drm_encoder *encoder,
+ {
+ 	struct trilin_encoder *mst_encoder = encoder_to_trilin(encoder);
+ 	struct trilin_dp *dp = mst_encoder->dp;
+-	struct drm_atomic_state *state = conn_state->state;
++	struct drm_atomic_commit *state = conn_state->state;
+ 	struct drm_connector *connector = conn_state->connector;
+ 	struct trilin_connector *conn = connector_to_trilin(connector);
+ 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+diff --git a/drivers/gpu/drm/cix/linlon-dp/hw/dp_component.c b/drivers/gpu/drm/cix/linlon-dp/hw/dp_component.c
+index a12c45449950c430ae71a8e6700402baa2db5051..8900153e21860b917b2c519c08aca83b6cdc6ec6 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/hw/dp_component.c
++++ b/drivers/gpu/drm/cix/linlon-dp/hw/dp_component.c
+@@ -1179,11 +1179,11 @@ static void dp_improc_update(struct linlondp_component *c,
+ 		IPS_CTRL_CHD420 | IPS_CTRL_DITH;
+ 
+ 	/* config color format */
+-	if (st->color_format == DRM_COLOR_FORMAT_YCBCR420)
++	if (st->color_format == BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420))
+ 		ctrl |= IPS_CTRL_YUV | IPS_CTRL_CHD422 | IPS_CTRL_CHD420;
+-	else if (st->color_format == DRM_COLOR_FORMAT_YCBCR422)
++	else if (st->color_format == BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422))
+ 		ctrl |= IPS_CTRL_YUV | IPS_CTRL_CHD422;
+-	else if (st->color_format == DRM_COLOR_FORMAT_YCBCR444)
++	else if (st->color_format == BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444))
+ 		ctrl |= IPS_CTRL_YUV;
+ 
+ 	/* config dither */
+@@ -1265,12 +1265,12 @@ static int dp_improc_init(struct dp_dev *dp, struct block_header *blk,
+ 
+ 	improc = to_improc(c);
+ 	improc->supported_color_depths = BIT(8) | BIT(10);
+-	improc->supported_color_formats = DRM_COLOR_FORMAT_RGB444 |
+-					  DRM_COLOR_FORMAT_YCBCR444 |
+-					  DRM_COLOR_FORMAT_YCBCR422;
++	improc->supported_color_formats = BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444) |
++					  BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444) |
++					  BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422);
+ 	value = linlondp_read32(reg, BLK_INFO);
+ 	if (value & IPS_INFO_CHD420)
+-		improc->supported_color_formats |= DRM_COLOR_FORMAT_YCBCR420;
++		improc->supported_color_formats |= BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420);
+ 
+ 	improc->supports_csc = true;
+ 	improc->supports_gamma = true;
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_crtc.c b/drivers/gpu/drm/cix/linlon-dp/linlondp_crtc.c
+index 0080c27049479d244e06d6aa9f9790796ac9abc4..c58f4855939dd3f82b03816b79e11aaca9c54a78 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_crtc.c
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_crtc.c
+@@ -47,7 +47,7 @@ void linlondp_crtc_get_color_config(struct drm_crtc_state *crtc_st,
+ 
+ 	/* connector doesn't config any color_format, use RGB444 as default */
+ 	if (!conn_color_formats)
+-		conn_color_formats = DRM_COLOR_FORMAT_RGB444;
++		conn_color_formats = BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444);
+ 
+ 	*color_depths = GENMASK(min_bpc, 0);
+ 	*color_formats = conn_color_formats;
+@@ -85,7 +85,7 @@ linlondp_crtc_update_clock_ratio(struct linlondp_crtc_state *kcrtc_st)
+  * Zero for success or -errno
+  */
+ static int linlondp_crtc_atomic_check(struct drm_crtc *crtc,
+-				      struct drm_atomic_state *state)
++				      struct drm_atomic_commit *state)
+ {
+ 	struct drm_crtc_state *crtc_state =
+ 		drm_atomic_get_new_crtc_state(state, crtc);
+@@ -359,7 +359,7 @@ static void linlondp_crtc_do_flush(struct drm_crtc *crtc,
+ }
+ 
+ static void linlondp_crtc_atomic_enable(struct drm_crtc *crtc,
+-					struct drm_atomic_state *state)
++					struct drm_atomic_commit *state)
+ {
+ 	int err, repeat = 0;
+ 	struct drm_crtc_state *old = drm_atomic_get_old_crtc_state(state, crtc);
+@@ -495,7 +495,7 @@ void linlondp_crtc_flush_and_wait_for_flip_done(
+ }
+ 
+ static void linlondp_crtc_atomic_disable(struct drm_crtc *crtc,
+-					 struct drm_atomic_state *state)
++					 struct drm_atomic_commit *state)
+ {
+ 	struct drm_crtc_state *old = drm_atomic_get_old_crtc_state(state, crtc);
+ 	struct drm_crtc_state *new_state = drm_atomic_get_new_crtc_state(state, crtc);
+@@ -576,7 +576,7 @@ static void linlondp_crtc_atomic_disable(struct drm_crtc *crtc,
+ }
+ 
+ static void linlondp_crtc_atomic_flush(struct drm_crtc *crtc,
+-				       struct drm_atomic_state *state)
++				       struct drm_atomic_commit *state)
+ {
+ 	struct drm_crtc_state *crtc_state =
+ 		drm_atomic_get_new_crtc_state(state, crtc);
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c b/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c
+index 0f1e17fa45e1c06227296f723f54602ea38030d6..f5885b3c2f195961cdf719cd28035e8d26888a07 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c
+@@ -76,7 +76,7 @@ static struct drm_driver linlondp_kms_driver = {
+ 	.minor = 0,
+ };
+ 
+-static void linlondp_kms_atomic_commit_hw_done(struct drm_atomic_state *state)
++static void linlondp_kms_atomic_commit_hw_done(struct drm_atomic_commit *state)
+ {
+ 	struct drm_device *dev = state->dev;
+ 	struct linlondp_kms_dev *kms = to_kdev(dev);
+@@ -103,7 +103,7 @@ static void linlondp_kms_atomic_commit_hw_done(struct drm_atomic_state *state)
+ 	drm_atomic_helper_commit_hw_done(state);
+ }
+ 
+-static void linlondp_kms_commit_tail(struct drm_atomic_state *old_state)
++static void linlondp_kms_commit_tail(struct drm_atomic_commit *old_state)
+ {
+ 	struct drm_device *dev = old_state->dev;
+ 	bool fence_cookie = dma_fence_begin_signalling();
+@@ -172,7 +172,7 @@ static int linlondp_plane_state_list_add(struct drm_plane_state *plane_st,
+ static int linlondp_crtc_normalize_zpos(struct drm_crtc *crtc,
+ 					struct drm_crtc_state *crtc_st)
+ {
+-	struct drm_atomic_state *state = crtc_st->state;
++	struct drm_atomic_commit *state = crtc_st->state;
+ 	struct linlondp_crtc *kcrtc = to_kcrtc(crtc);
+ 	struct linlondp_crtc_state *kcrtc_st = to_kcrtc_st(crtc_st);
+ 	struct linlondp_plane_state *kplane_st;
+@@ -259,7 +259,7 @@ static bool linlondp_vrr_match_mode(const struct drm_display_mode *mode1,
+ }
+ 
+ static int linlondp_kms_check(struct drm_device *dev,
+-			      struct drm_atomic_state *state)
++			      struct drm_atomic_commit *state)
+ {
+ 	struct drm_crtc *crtc;
+ 	struct drm_crtc_state *old_crtc_st, *new_crtc_st;
+@@ -275,7 +275,7 @@ static int linlondp_kms_check(struct drm_device *dev,
+ 
+ 	/* Linlondp need to re-calculate resource assumption in every commit
+ 	 * so need to add all affected_planes (even unchanged) to
+-	 * drm_atomic_state.
++	 * drm_atomic_commit.
+ 	 */
+ 
+ 	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_st, new_crtc_st, i) {
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline.h b/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline.h
+index ba58188c0214cf09291385e7527cf2379ea6b781..009776684dc47fd9e58eb2e5c730e0247a6bc302 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline.h
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline.h
+@@ -153,7 +153,7 @@ struct linlondp_component_output {
+  * @linlondp_scaler_state
+  */
+ struct linlondp_component_state {
+-	/** @obj: tracking component_state by drm_atomic_state */
++	/** @obj: tracking component_state by drm_atomic_commit */
+ 	struct drm_private_state obj;
+ 	/** @component: backpointer to the component */
+ 	struct linlondp_component *component;
+@@ -382,7 +382,7 @@ struct linlondp_pipeline_funcs {
+  * Represent a complete display pipeline and hold all functional components.
+  */
+ struct linlondp_pipeline {
+-	/** @obj: link pipeline as private obj of drm_atomic_state */
++	/** @obj: link pipeline as private obj of drm_atomic_commit */
+ 	struct drm_private_obj obj;
+ 	/** @mdev: the parent linlondp_dev */
+ 	struct linlondp_dev *mdev;
+@@ -458,10 +458,10 @@ struct linlondp_pipeline {
+  *
+  * NOTE:
+  * Unlike the pipeline, pipeline_state doesn’t gather any component_state
+- * into it. It because all component will be managed by drm_atomic_state.
++ * into it. It because all component will be managed by drm_atomic_commit.
+  */
+ struct linlondp_pipeline_state {
+-	/** @obj: tracking pipeline_state by drm_atomic_state */
++	/** @obj: tracking pipeline_state by drm_atomic_commit */
+ 	struct drm_private_state obj;
+ 	/** @pipe: backpointer to the pipeline */
+ 	struct linlondp_pipeline *pipe;
+@@ -584,11 +584,11 @@ int linlondp_release_unclaimed_resources(struct linlondp_pipeline *pipe,
+ 
+ struct linlondp_pipeline_state *
+ linlondp_pipeline_get_old_state(struct linlondp_pipeline *pipe,
+-				struct drm_atomic_state *state);
++				struct drm_atomic_commit *state);
+ bool linlondp_pipeline_disable(struct linlondp_pipeline *pipe,
+-			       struct drm_atomic_state *old_state);
++			       struct drm_atomic_commit *old_state);
+ void linlondp_pipeline_update(struct linlondp_pipeline *pipe,
+-			      struct drm_atomic_state *old_state);
++			      struct drm_atomic_commit *old_state);
+ 
+ void linlondp_complete_data_flow_cfg(struct linlondp_layer *layer,
+ 				     struct linlondp_data_flow_cfg *dflow,
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline_state.c b/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline_state.c
+index e0e3547116d698b2081cca959328ca33adee25b3..76783e8190f1c8f4f4c9363463f7d400bb196b2b 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline_state.c
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_pipeline_state.c
+@@ -22,7 +22,7 @@ static inline bool is_switching_user(void *old, void *new)
+ 
+ static struct linlondp_pipeline_state *
+ linlondp_pipeline_get_state(struct linlondp_pipeline *pipe,
+-			    struct drm_atomic_state *state)
++			    struct drm_atomic_commit *state)
+ {
+ 	struct drm_private_state *priv_st;
+ 
+@@ -35,7 +35,7 @@ linlondp_pipeline_get_state(struct linlondp_pipeline *pipe,
+ 
+ struct linlondp_pipeline_state *
+ linlondp_pipeline_get_old_state(struct linlondp_pipeline *pipe,
+-				struct drm_atomic_state *state)
++				struct drm_atomic_commit *state)
+ {
+ 	struct drm_private_state *priv_st;
+ 
+@@ -47,7 +47,7 @@ linlondp_pipeline_get_old_state(struct linlondp_pipeline *pipe,
+ 
+ static struct linlondp_pipeline_state *
+ linlondp_pipeline_get_new_state(struct linlondp_pipeline *pipe,
+-				struct drm_atomic_state *state)
++				struct drm_atomic_commit *state)
+ {
+ 	struct drm_private_state *priv_st;
+ 
+@@ -60,7 +60,7 @@ linlondp_pipeline_get_new_state(struct linlondp_pipeline *pipe,
+ /* Assign pipeline for crtc */
+ static struct linlondp_pipeline_state *
+ linlondp_pipeline_get_state_and_set_crtc(struct linlondp_pipeline *pipe,
+-					 struct drm_atomic_state *state,
++					 struct drm_atomic_commit *state,
+ 					 struct drm_crtc *crtc)
+ {
+ 	struct linlondp_pipeline_state *st;
+@@ -97,7 +97,7 @@ linlondp_pipeline_get_state_and_set_crtc(struct linlondp_pipeline *pipe,
+ 
+ static struct linlondp_component_state *
+ linlondp_component_get_state(struct linlondp_component *c,
+-			     struct drm_atomic_state *state)
++			     struct drm_atomic_commit *state)
+ {
+ 	struct drm_private_state *priv_st;
+ 
+@@ -112,7 +112,7 @@ linlondp_component_get_state(struct linlondp_component *c,
+ 
+ static struct linlondp_component_state *
+ linlondp_component_get_old_state(struct linlondp_component *c,
+-				 struct drm_atomic_state *state)
++				 struct drm_atomic_commit *state)
+ {
+ 	struct drm_private_state *priv_st;
+ 
+@@ -149,7 +149,7 @@ linlondp_component_get_old_state(struct linlondp_component *c,
+  */
+ static struct linlondp_component_state *
+ linlondp_component_get_state_and_set_user(struct linlondp_component *c,
+-					  struct drm_atomic_state *state,
++					  struct drm_atomic_commit *state,
+ 					  void *user, struct drm_crtc *crtc)
+ {
+ 	struct linlondp_pipeline_state *pipe_st;
+@@ -250,7 +250,7 @@ linlondp_component_validate_private(struct linlondp_component *c,
+ /* Get current available scaler from the component->supported_outputs */
+ static struct linlondp_scaler *
+ linlondp_component_get_avail_scaler(struct linlondp_component *c,
+-				    struct drm_atomic_state *state)
++				    struct drm_atomic_commit *state)
+ {
+ 	struct linlondp_pipeline_state *pipe_st;
+ 	u32 avail_scalers;
+@@ -531,7 +531,7 @@ static int linlondp_scaler_validate(void *user,
+ 				    struct linlondp_crtc_state *kcrtc_st,
+ 				    struct linlondp_data_flow_cfg *dflow)
+ {
+-	struct drm_atomic_state *drm_st = kcrtc_st->base.state;
++	struct drm_atomic_commit *drm_st = kcrtc_st->base.state;
+ 	struct linlondp_component_state *c_st;
+ 	struct linlondp_scaler_state *st;
+ 	struct linlondp_scaler *scaler;
+@@ -701,7 +701,7 @@ static int linlondp_compiz_set_input(struct linlondp_compiz *compiz,
+ 				     struct linlondp_crtc_state *kcrtc_st,
+ 				     struct linlondp_data_flow_cfg *dflow)
+ {
+-	struct drm_atomic_state *drm_st = kcrtc_st->base.state;
++	struct drm_atomic_commit *drm_st = kcrtc_st->base.state;
+ 	struct drm_crtc *crtc = kcrtc_st->base.crtc;
+ 	struct linlondp_component_state *c_st, *old_st;
+ 	struct linlondp_compiz_input_cfg *cin;
+@@ -853,7 +853,7 @@ static int linlondp_improc_validate(struct linlondp_improc *improc,
+ 			st->color_format = kcrtc_st->output_format;
+ 		}
+ 
+-		if ((st->color_format == DRM_COLOR_FORMAT_YCBCR420) &&
++		if ((st->color_format == BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420)) &&
+ 		    (improc->base.pipeline->pixel_per_cycle != 1)) {
+ 			drm_dbg_atomic(crtc->dev, 
+ 				"420 with non-1ppc out is not supported\n");
+@@ -1605,7 +1605,7 @@ static void
+ linlondp_pipeline_unbound_components(struct linlondp_pipeline *pipe,
+ 				     struct linlondp_pipeline_state *new)
+ {
+-	struct drm_atomic_state *drm_st = new->obj.state;
++	struct drm_atomic_commit *drm_st = new->obj.state;
+ 	struct linlondp_pipeline_state *old = priv_to_pipe_st(pipe->obj.state);
+ 	struct linlondp_component_state *c_st;
+ 	struct linlondp_component *c;
+@@ -1629,7 +1629,7 @@ linlondp_pipeline_unbound_components(struct linlondp_pipeline *pipe,
+ int linlondp_release_unclaimed_resources(struct linlondp_pipeline *pipe,
+ 					 struct linlondp_crtc_state *kcrtc_st)
+ {
+-	struct drm_atomic_state *drm_st = kcrtc_st->base.state;
++	struct drm_atomic_commit *drm_st = kcrtc_st->base.state;
+ 	struct linlondp_pipeline_state *st;
+ 
+ 	/* ignore the pipeline which is not affected */
+@@ -1661,7 +1661,7 @@ int linlondp_release_unclaimed_resources(struct linlondp_pipeline *pipe,
+  * false: disable is complete.
+  */
+ bool linlondp_pipeline_disable(struct linlondp_pipeline *pipe,
+-			       struct drm_atomic_state *old_state)
++			       struct drm_atomic_commit *old_state)
+ {
+ 	struct linlondp_pipeline_state *old;
+ 	struct linlondp_component *c;
+@@ -1707,7 +1707,7 @@ bool linlondp_pipeline_disable(struct linlondp_pipeline *pipe,
+ }
+ 
+ void linlondp_pipeline_update(struct linlondp_pipeline *pipe,
+-			      struct drm_atomic_state *old_state)
++			      struct drm_atomic_commit *old_state)
+ {
+ 	struct linlondp_pipeline_state *new = priv_to_pipe_st(pipe->obj.state);
+ 	struct linlondp_pipeline_state *old;
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_plane.c b/drivers/gpu/drm/cix/linlon-dp/linlondp_plane.c
+index 3294adfd8616520c0c58c997f1480c5a8fe60791..36f24bb96318a7db579118e8c3ebba7207266927 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_plane.c
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_plane.c
+@@ -145,7 +145,7 @@ static int linlondp_plane_init_data_flow(struct drm_plane_state *st,
+  * Zero for success or -errno
+  */
+ static int linlondp_plane_atomic_check(struct drm_plane *plane,
+-				       struct drm_atomic_state *state)
++				       struct drm_atomic_commit *state)
+ {
+ 	struct drm_plane_state *new_plane_state =
+ 		drm_atomic_get_new_plane_state(state, plane);
+@@ -195,7 +195,7 @@ static int linlondp_plane_atomic_check(struct drm_plane *plane,
+  * linlondp handles all the HW update in crtc->atomic_flush
+  */
+ static void linlondp_plane_atomic_update(struct drm_plane *plane,
+-					 struct drm_atomic_state *state)
++					 struct drm_atomic_commit *state)
+ {
+ }
+ 
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_private_obj.c b/drivers/gpu/drm/cix/linlon-dp/linlondp_private_obj.c
+index 04625f362c47af43ab3f22cf6c8fcd13fd46e100..0637a7c313380dbc7bb8380cf2eb25e0d0355fbb 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_private_obj.c
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_private_obj.c
+@@ -42,7 +42,23 @@ static void linlondp_layer_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(st);
+ }
+ 
++static struct drm_private_state *
++linlondp_layer_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_layer_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_layer_obj_funcs = {
++	.atomic_create_state = linlondp_layer_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_layer_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_layer_atomic_destroy_state,
+ };
+@@ -50,16 +66,8 @@ static const struct drm_private_state_funcs linlondp_layer_obj_funcs = {
+ static int linlondp_layer_obj_add(struct linlondp_kms_dev *kms,
+ 				  struct linlondp_layer *layer)
+ {
+-	struct linlondp_layer_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &layer->base;
+-	drm_atomic_private_obj_init(&kms->base, &layer->base.obj, &st->base.obj,
+-				    &linlondp_layer_obj_funcs);
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &layer->base.obj,
++					   &linlondp_layer_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -84,7 +92,23 @@ linlondp_scaler_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(to_scaler_st(priv_to_comp_st(state)));
+ }
+ 
++static struct drm_private_state *
++linlondp_scaler_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_scaler_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_scaler_obj_funcs = {
++	.atomic_create_state = linlondp_scaler_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_scaler_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_scaler_atomic_destroy_state,
+ };
+@@ -92,16 +116,8 @@ static const struct drm_private_state_funcs linlondp_scaler_obj_funcs = {
+ static int linlondp_scaler_obj_add(struct linlondp_kms_dev *kms,
+ 				   struct linlondp_scaler *scaler)
+ {
+-	struct linlondp_scaler_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &scaler->base;
+-	drm_atomic_private_obj_init(&kms->base, &scaler->base.obj,
+-				    &st->base.obj, &linlondp_scaler_obj_funcs);
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &scaler->base.obj,
++					   &linlondp_scaler_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -126,7 +142,23 @@ linlondp_compiz_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(to_compiz_st(priv_to_comp_st(state)));
+ }
+ 
++static struct drm_private_state *
++linlondp_compiz_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_compiz_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_compiz_obj_funcs = {
++	.atomic_create_state = linlondp_compiz_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_compiz_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_compiz_atomic_destroy_state,
+ };
+@@ -134,17 +166,8 @@ static const struct drm_private_state_funcs linlondp_compiz_obj_funcs = {
+ static int linlondp_compiz_obj_add(struct linlondp_kms_dev *kms,
+ 				   struct linlondp_compiz *compiz)
+ {
+-	struct linlondp_compiz_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &compiz->base;
+-	drm_atomic_private_obj_init(&kms->base, &compiz->base.obj,
+-				    &st->base.obj, &linlondp_compiz_obj_funcs);
+-
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &compiz->base.obj,
++					   &linlondp_compiz_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -169,7 +192,23 @@ linlondp_splitter_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(to_splitter_st(priv_to_comp_st(state)));
+ }
+ 
++static struct drm_private_state *
++linlondp_splitter_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_splitter_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_splitter_obj_funcs = {
++	.atomic_create_state = linlondp_splitter_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_splitter_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_splitter_atomic_destroy_state,
+ };
+@@ -177,18 +216,8 @@ static const struct drm_private_state_funcs linlondp_splitter_obj_funcs = {
+ static int linlondp_splitter_obj_add(struct linlondp_kms_dev *kms,
+ 				     struct linlondp_splitter *splitter)
+ {
+-	struct linlondp_splitter_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &splitter->base;
+-	drm_atomic_private_obj_init(&kms->base, &splitter->base.obj,
+-				    &st->base.obj,
+-				    &linlondp_splitter_obj_funcs);
+-
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &splitter->base.obj,
++					   &linlondp_splitter_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -213,7 +242,23 @@ linlondp_merger_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(to_merger_st(priv_to_comp_st(state)));
+ }
+ 
++static struct drm_private_state *
++linlondp_merger_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_merger_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_merger_obj_funcs = {
++	.atomic_create_state = linlondp_merger_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_merger_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_merger_atomic_destroy_state,
+ };
+@@ -221,17 +266,8 @@ static const struct drm_private_state_funcs linlondp_merger_obj_funcs = {
+ static int linlondp_merger_obj_add(struct linlondp_kms_dev *kms,
+ 				   struct linlondp_merger *merger)
+ {
+-	struct linlondp_merger_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &merger->base;
+-	drm_atomic_private_obj_init(&kms->base, &merger->base.obj,
+-				    &st->base.obj, &linlondp_merger_obj_funcs);
+-
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &merger->base.obj,
++					   &linlondp_merger_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -256,7 +292,23 @@ linlondp_improc_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(to_improc_st(priv_to_comp_st(state)));
+ }
+ 
++static struct drm_private_state *
++linlondp_improc_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_improc_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_improc_obj_funcs = {
++	.atomic_create_state = linlondp_improc_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_improc_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_improc_atomic_destroy_state,
+ };
+@@ -264,17 +316,8 @@ static const struct drm_private_state_funcs linlondp_improc_obj_funcs = {
+ static int linlondp_improc_obj_add(struct linlondp_kms_dev *kms,
+ 				   struct linlondp_improc *improc)
+ {
+-	struct linlondp_improc_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &improc->base;
+-	drm_atomic_private_obj_init(&kms->base, &improc->base.obj,
+-				    &st->base.obj, &linlondp_improc_obj_funcs);
+-
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &improc->base.obj,
++					   &linlondp_improc_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -299,7 +342,23 @@ linlondp_timing_ctrlr_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(to_ctrlr_st(priv_to_comp_st(state)));
+ }
+ 
++static struct drm_private_state *
++linlondp_timing_ctrlr_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_compiz_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->base.obj);
++	st->base.component = container_of(obj, struct linlondp_component, obj);
++
++	return &st->base.obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_timing_ctrlr_obj_funcs = {
++	.atomic_create_state = linlondp_timing_ctrlr_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_timing_ctrlr_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_timing_ctrlr_atomic_destroy_state,
+ };
+@@ -307,17 +366,8 @@ static const struct drm_private_state_funcs linlondp_timing_ctrlr_obj_funcs = {
+ static int linlondp_timing_ctrlr_obj_add(struct linlondp_kms_dev *kms,
+ 					 struct linlondp_timing_ctrlr *ctrlr)
+ {
+-	struct linlondp_compiz_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->base.component = &ctrlr->base;
+-	drm_atomic_private_obj_init(&kms->base, &ctrlr->base.obj, &st->base.obj,
+-				    &linlondp_timing_ctrlr_obj_funcs);
+-
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &ctrlr->base.obj,
++					   &linlondp_timing_ctrlr_obj_funcs);
+ }
+ 
+ static struct drm_private_state *
+@@ -343,7 +393,23 @@ linlondp_pipeline_atomic_destroy_state(struct drm_private_obj *obj,
+ 	kfree(priv_to_pipe_st(state));
+ }
+ 
++static struct drm_private_state *
++linlondp_pipeline_atomic_create_state(struct drm_private_obj *obj)
++{
++	struct linlondp_pipeline_state *st;
++
++	st = kzalloc(sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return ERR_PTR(-ENOMEM);
++
++	__drm_atomic_helper_private_obj_create_state(obj, &st->obj);
++	st->pipe = container_of(obj, struct linlondp_pipeline, obj);
++
++	return &st->obj;
++}
++
+ static const struct drm_private_state_funcs linlondp_pipeline_obj_funcs = {
++	.atomic_create_state = linlondp_pipeline_atomic_create_state,
+ 	.atomic_duplicate_state = linlondp_pipeline_atomic_duplicate_state,
+ 	.atomic_destroy_state = linlondp_pipeline_atomic_destroy_state,
+ };
+@@ -351,17 +417,8 @@ static const struct drm_private_state_funcs linlondp_pipeline_obj_funcs = {
+ static int linlondp_pipeline_obj_add(struct linlondp_kms_dev *kms,
+ 				     struct linlondp_pipeline *pipe)
+ {
+-	struct linlondp_pipeline_state *st;
+-
+-	st = kzalloc(sizeof(*st), GFP_KERNEL);
+-	if (!st)
+-		return -ENOMEM;
+-
+-	st->pipe = pipe;
+-	drm_atomic_private_obj_init(&kms->base, &pipe->obj, &st->obj,
+-				    &linlondp_pipeline_obj_funcs);
+-
+-	return 0;
++	return drm_atomic_private_obj_init(&kms->base, &pipe->obj,
++					   &linlondp_pipeline_obj_funcs);
+ }
+ 
+ int linlondp_kms_add_private_objs(struct linlondp_kms_dev *kms,
+diff --git a/drivers/media/platform/cix/if/v4l2/mvx_ext_v4l2.c b/drivers/media/platform/cix/if/v4l2/mvx_ext_v4l2.c
+index 26ece11269550f07464cfd4ff608813b5d375e2b..b39fe7f47b6bddc0a26c7c8aff1a39bdb2a5c959 100755
+--- a/drivers/media/platform/cix/if/v4l2/mvx_ext_v4l2.c
++++ b/drivers/media/platform/cix/if/v4l2/mvx_ext_v4l2.c
+@@ -120,7 +120,7 @@ int mvx_ext_if_register_device(struct mvx_ext_if *ext,
+                 V4L2_CAP_VIDEO_M2M_MPLANE |
+                 V4L2_CAP_EXT_PIX_FORMAT |
+                 V4L2_CAP_STREAMING;
+-    strncpy(ext->vdev.name, name, sizeof(ext->vdev.name));
++    strscpy(ext->vdev.name, name, sizeof(ext->vdev.name));
+ 
+     video_set_drvdata(&ext->vdev, ext);
+ 

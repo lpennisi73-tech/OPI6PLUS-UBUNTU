@@ -1,0 +1,19 @@
+# BOOKWORM Sky1 — réglage du gouverneur CPU (lu au démarrage par sky1-cpufreq-tune.service)
+# Installé dans /etc/default/sky1-cpufreq ; install.sh ne l'écrase pas s'il existe déjà.
+# Après modification : sudo systemctl restart sky1-cpufreq-tune
+#
+# Mesures glmark2-es2-wayland 800×600, noyau 7.2.11-sky1-custom (docs/notes-materiel.md §14) :
+#   ondemand d'origine (95 / 1)  ~2510
+#   ondemand 30 / 50 (défaut ici) ~2881   fréquence relâchée ~0,4 s après la dernière rafale
+#   performance                  ~2942   CPU toujours au maximum, même au repos
+# Le fil qui envoie le travail au GPU charge le CPU par rafales courtes : avec le seuil
+# d'origine (95 %), ondemand ne monte jamais en fréquence et freine le GPU.
+
+# ondemand, performance, schedutil (mesuré moins bon), conservative, powersave
+GOVERNOR=ondemand
+
+# Réglages d'ondemand (ignorés avec un autre gouverneur)
+# Charge (%) au-delà de laquelle le CPU passe à sa fréquence maximale
+UP_THRESHOLD=30
+# Durée de maintien à la fréquence maximale, en multiples de sampling_rate (8 ms ici)
+SAMPLING_DOWN_FACTOR=50

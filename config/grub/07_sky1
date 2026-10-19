@@ -1,0 +1,84 @@
+#!/bin/sh
+# =============================================================================
+# 07_sky1 — Entrées GRUB des noyaux Sky1 (Orange Pi 6 Plus) : devicetree + acpi=off
+# BOOKWORM Sky1 Kernel Builder (paquet bookworm-sky1-settings)
+#
+# Lancé par update-grub (grub-mkconfig) : une entrée normale + une Recovery par noyau
+# /boot/vmlinuz-*-sky1-*, la version la plus récente en premier (à version égale,
+# -sky1-custom avant les noyaux de test). Placé avant 10_linux : entrée 0 = défaut.
+# Le disque est celui de la machine (GRUB_DEVICE_UUID), rien n'est écrit en dur.
+# DTB : /boot/dtb/<dtb>-<kver>.dtb, copié par /etc/kernel/postinst.d/zz-bookworm-sky1-dtb
+# (pas /boot/dtb-<kver> : 10_linux l'ajouterait à son entrée ACPI).
+# Réglages : /etc/default/bookworm-sky1
+# =============================================================================
+set -e
+
+prefix="/usr"
+exec_prefix="/usr"
+datarootdir="/usr/share"
+. "$pkgdatadir/grub-mkconfig_lib"
+
+SKY1_GRUB_ENABLE=true
+SKY1_BOARD_NAME="Orange Pi 6 Plus"
+SKY1_DTB_NAME="sky1-orangepi-6-plus.dtb"
+SKY1_CMDLINE="acpi=off"
+[ -r /etc/default/bookworm-sky1 ] && . /etc/default/bookworm-sky1
+[ "$SKY1_GRUB_ENABLE" = true ] || exit 0
+
+if [ "x${GRUB_DEVICE_UUID}" = "x" ] || [ "x${GRUB_DISABLE_LINUX_UUID}" = "xtrue" ] \
+    || ! test -e "/dev/disk/by-uuid/${GRUB_DEVICE_UUID}" \
+    || uses_abstraction "${GRUB_DEVICE}" lvm; then
+    LINUX_ROOT_DEVICE=${GRUB_DEVICE}
+else
+    LINUX_ROOT_DEVICE=UUID=${GRUB_DEVICE_UUID}
+fi
+
+# Racine btrfs dans un sous-volume (même traitement que 10_linux)
+case x"$GRUB_FS" in
+    xbtrfs)
+        rootsubvol="$(make_system_path_relative_to_its_root /)"
+        rootsubvol="${rootsubvol#/}"
+        [ "x${rootsubvol}" != x ] && GRUB_CMDLINE_LINUX="rootflags=subvol=${rootsubvol} ${GRUB_CMDLINE_LINUX}"
+        ;;
+esac
+
+boot_rel="$(make_system_path_relative_to_its_root /boot)"
+access="$(prepare_grub_to_access_device "${GRUB_DEVICE_BOOT}" | grub_add_tab)"
+
+sky1_entry() {
+    kv="$1" title="$2" loglevel="$3" extra="$4" dtb="$5"
+    cat << EOF
+menuentry '$(echo "$title" | grub_quote)' --class ubuntu --class gnu-linux --class gnu --class os {
+	load_video
+	insmod gzio
+${access}
+	echo 'Loading Sky1 Linux ${kv} ...'
+	linux ${boot_rel}/vmlinuz-${kv} root=${LINUX_ROOT_DEVICE} ro loglevel=${loglevel} ${extra}${GRUB_CMDLINE_LINUX:+${GRUB_CMDLINE_LINUX} }${SKY1_CMDLINE}
+	echo 'Loading initial ramdisk ...'
+	initrd ${boot_rel}/initrd.img-${kv}
+	echo 'Loading device tree ...'
+	devicetree ${boot_rel}/dtb/${dtb}
+}
+EOF
+}
+
+for img in /boot/vmlinuz-*-sky1-*; do
+    [ -f "$img" ] || continue
+    kv="${img#/boot/vmlinuz-}"
+    custom=0
+    case "$kv" in *-sky1-custom) custom=1 ;; esac
+    echo "${kv%%-sky1-*} $custom $kv"
+done | sort -k1,1Vr -k2,2nr | while read -r _base _custom kv; do
+    dtb="${SKY1_DTB_NAME%.dtb}-${kv}.dtb"
+    if [ ! -f "/boot/initrd.img-${kv}" ]; then
+        echo "Sky1 : ${kv} ignoré (pas de /boot/initrd.img-${kv})" >&2
+        continue
+    fi
+    if [ ! -f "/boot/dtb/${dtb}" ]; then
+        echo "Sky1 : ${kv} ignoré (pas de /boot/dtb/${dtb})" >&2
+        continue
+    fi
+    gettext_printf "Found Sky1 linux image: %s\n" "/boot/vmlinuz-${kv}" >&2
+    sky1_entry "$kv" "Sky1 ${SKY1_BOARD_NAME} - ${kv} (GPU+NPU)" 7 "" "$dtb"
+    sky1_entry "$kv" "Sky1 ${SKY1_BOARD_NAME} - ${kv} (Recovery)" 8 "systemd.unit=rescue.target " "$dtb"
+done
