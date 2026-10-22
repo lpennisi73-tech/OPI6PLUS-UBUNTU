@@ -1,9 +1,12 @@
 #!/bin/bash
 # =============================================================================
-# build-iso.sh — ISO d'installation Ubuntu 26.10 + noyau Sky1 (Orange Pi 6 Plus)
+# build-iso.sh — ISO d'installation Ubuntu + noyau Sky1 (Orange Pi 6 Plus)
 # BOOKWORM Sky1 Kernel Builder
 #
-# Remasterise l'ISO officielle ubuntu-26.10-desktop-arm64.iso (non modifiée) :
+# Distribution de base choisie par --distro : config/distros/<distro>.conf (ISO officielle,
+# empreinte, étiquette, nom de sortie). L'ISO officielle est téléchargée si absente
+# (liste d'empreintes signée par Ubuntu vérifiée), puis son empreinte est contrôlée.
+# Remasterise l'ISO officielle (non modifiée) :
 #   1. noyau Sky1, paquet bookworm-sky1-settings et firmwares VPU de CIX (cix-vpu-firmware)
 #      installés dans la couche squashfs
 #      `minimal` (base du système live ET du système installé) ;
@@ -15,9 +18,12 @@
 # Sur le disque installé, /etc/grub.d/07_sky1 (paquet de réglages) crée l'entrée Sky1.
 # Dépendances : sudo ./install-deps.sh --with-iso
 #
-# Usage: sudo ./build-iso.sh [--iso <ubuntu.iso>] [--kernel-deb <linux-image.deb>]
+# Usage: sudo ./build-iso.sh [--distro <distro>] [--iso <ubuntu.iso>] [--kernel-deb <linux-image.deb>]
 #                            [--out <sortie.iso>] [--work <dir>] [--keep-work] [--resume]
-#   --iso         ISO officielle (défaut : /usr/src/build/sky1-iso/ubuntu-26.10-desktop-arm64.iso)
+#   --distro      Distribution de base, fichier config/distros/<distro>.conf (défaut : ubuntu-26.10)
+#   --list-distros  Lister les distributions disponibles
+#   --iso         ISO officielle à utiliser telle quelle (défaut : celle de la distribution,
+#                 dans /usr/src/build/sky1-iso/, téléchargée si absente)
 #   --kernel-deb  Paquet noyau (défaut : linux-image-*-sky1-custom le plus récent de BUILD_DIR)
 #   --out         ISO produite (défaut : à côté de l'ISO officielle, datée)
 #   --work        Dossier de travail, ~30 Go (défaut : <dossier de l'ISO>/work)
@@ -35,7 +41,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PROJECT_DIR/config/board.conf"
 
 ISO_DIR=/usr/src/build/sky1-iso
-SRC_ISO="$ISO_DIR/ubuntu-26.10-desktop-arm64.iso"
+DISTRO_DIR="$PROJECT_DIR/config/distros"
+DISTRO="ubuntu-26.10"
+SRC_ISO=""
 KERNEL_DEB=""
 OUT_ISO=""
 WORK=""
@@ -44,13 +52,19 @@ RESUME=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --distro) DISTRO="$2"; shift 2 ;;
+        --list-distros)
+            for f in "$DISTRO_DIR"/*.conf; do
+                ( source "$f"; printf '  %-18s %-22s %-10s %s\n' "$(basename "$f" .conf)" "$DISTRO_NAME" "$STATUS" "$DISTRO_SUPPORT" )
+            done
+            exit 0 ;;
         --iso) SRC_ISO="$2"; shift 2 ;;
         --kernel-deb) KERNEL_DEB="$2"; shift 2 ;;
         --out) OUT_ISO="$2"; shift 2 ;;
         --work) WORK="$2"; shift 2 ;;
         --keep-work) KEEP_WORK=true; shift ;;
         --resume) RESUME=true; shift ;;
-        --help|-h) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --help|-h) awk 'NR > 2 && /^# =+$/ { exit } NR > 2 { sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
         *) echo -e "${RED}Option inconnue: $1${NC}" >&2; exit 1 ;;
     esac
 done
@@ -59,10 +73,55 @@ die() { echo -e "${RED}ERREUR: $*${NC}" >&2; exit 1; }
 step() { echo ""; echo -e "${YELLOW}--- $* ---${NC}"; }
 
 [[ $EUID -eq 0 ]] || die "lancer en root (sudo) : chroot, montages"
-for t in xorriso unsquashfs mksquashfs python3 md5sum lsinitrd; do
+for t in xorriso unsquashfs mksquashfs python3 md5sum lsinitrd sha256sum; do
     command -v "$t" >/dev/null || die "$t manquant (sudo ./install-deps.sh --with-iso)"
 done
-[[ -f "$SRC_ISO" ]] || die "ISO officielle introuvable : $SRC_ISO"
+
+# --- Distribution de base ---
+DISTRO_CONF="$DISTRO_DIR/$DISTRO.conf"
+[[ -f "$DISTRO_CONF" ]] || die "distribution inconnue : $DISTRO (voir --list-distros)"
+source "$DISTRO_CONF"
+for v in DISTRO_NAME ISO_FILE ISO_URL ISO_SHA256 OUT_PREFIX VOLUME_ID GRUB_ANCHOR STATUS; do
+    [[ -n "${!v:-}" ]] || die "$DISTRO_CONF : $v manquant"
+done
+(( ${#VOLUME_ID} <= 32 )) || die "$DISTRO_CONF : VOLUME_ID dépasse 32 caractères"
+[[ "$GRUB_ANCHOR" == *'" {' ]] || die "$DISTRO_CONF : GRUB_ANCHOR doit finir par '\" {'"
+
+# Télécharge l'ISO officielle si absente : liste d'empreintes signée par Ubuntu (clé cdimage),
+# puis ISO contrôlée contre cette liste ; le fichier final n'apparaît qu'une fois vérifié
+fetch_iso() {    # fetch_iso <destination>
+    local dest="$1" keyring=/usr/share/keyrings/ubuntu-cdimage-keyring.gpg tmp
+    for t in curl gpgv; do command -v "$t" >/dev/null || die "$t manquant pour télécharger l'ISO"; done
+    [[ -f "$keyring" ]] || die "$keyring absent (paquet ubuntu-keyring)"
+    tmp=$(mktemp -d)
+    echo -e "${YELLOW}Téléchargement${NC} de la liste d'empreintes signée : $ISO_URL"
+    curl -fsSL -o "$tmp/SHA256SUMS" "$ISO_URL/SHA256SUMS" && curl -fsSL -o "$tmp/SHA256SUMS.gpg" "$ISO_URL/SHA256SUMS.gpg" \
+        || { rm -rf "$tmp"; die "liste d'empreintes introuvable sur $ISO_URL"; }
+    gpgv --keyring "$keyring" "$tmp/SHA256SUMS.gpg" "$tmp/SHA256SUMS" 2>/dev/null \
+        || { rm -rf "$tmp"; die "signature de SHA256SUMS invalide : téléchargement refusé"; }
+    grep -E "^$ISO_SHA256 [ *]$ISO_FILE\$" "$tmp/SHA256SUMS" >/dev/null \
+        || { rm -rf "$tmp"; die "l'empreinte figée de $ISO_FILE ne correspond pas à la liste signée d'Ubuntu"; }
+    rm -rf "$tmp"
+    echo -e "${YELLOW}Téléchargement${NC} de $ISO_FILE (plusieurs Go)…"
+    mkdir -p "$(dirname "$dest")"
+    curl -fL --retry 3 -o "$dest.partial" "$ISO_URL/$ISO_FILE" || { rm -f "$dest.partial"; die "téléchargement de $ISO_FILE"; }
+    [[ "$(sha256sum < "$dest.partial" | cut -d' ' -f1)" == "$ISO_SHA256" ]] \
+        || { rm -f "$dest.partial"; die "empreinte de $ISO_FILE téléchargée incorrecte"; }
+    mv "$dest.partial" "$dest"
+    echo -e "${GREEN}OK${NC} $ISO_FILE téléchargée, signature et empreinte vérifiées"
+}
+
+if [[ -z "$SRC_ISO" ]]; then
+    SRC_ISO="$ISO_DIR/$ISO_FILE"
+    [[ -f "$SRC_ISO" ]] || fetch_iso "$SRC_ISO"
+    echo -e "${YELLOW}Contrôle${NC} de l'empreinte de $ISO_FILE…"
+    [[ "$(sha256sum < "$SRC_ISO" | cut -d' ' -f1)" == "$ISO_SHA256" ]] \
+        || die "$SRC_ISO ne correspond pas à l'ISO officielle de $DISTRO_NAME (empreinte différente : la supprimer pour la retélécharger)"
+else
+    [[ -f "$SRC_ISO" ]] || die "ISO officielle introuvable : $SRC_ISO"
+    [[ "$(sha256sum < "$SRC_ISO" | cut -d' ' -f1)" == "$ISO_SHA256" ]] \
+        || echo -e "${YELLOW}ATTENTION${NC} : $SRC_ISO n'est pas l'ISO officielle attendue pour $DISTRO_NAME (empreinte différente)"
+fi
 SRC_ISO="$(realpath "$SRC_ISO")"
 WORK="$(realpath -m "${WORK:-$(dirname "$SRC_ISO")/work}")"
 
@@ -76,12 +135,13 @@ KVER="${KPKG#linux-image-}"
 KPKG_VERSION=$(dpkg-deb -f "$KERNEL_DEB" Version)
 [[ "$KVER" == *-sky1-* ]] || die "$KERNEL_DEB n'est pas un noyau Sky1 ($KPKG)"
 DATE=$(date +%Y%m%d)
-OUT_ISO="$(realpath -m "${OUT_ISO:-$(dirname "$SRC_ISO")/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-${DATE}.iso}")"
+OUT_ISO="$(realpath -m "${OUT_ISO:-$ISO_DIR/${OUT_PREFIX}-${DATE}.iso}")"
 
 FREE_GB=$(( $(df --output=avail -k "$(dirname "$WORK")" | tail -1) / 1024 / 1024 ))
 (( FREE_GB >= 35 )) || die "place insuffisante sous $(dirname "$WORK") : ${FREE_GB} Go libres, 35 Go nécessaires"
 
 echo -e "${BLUE}=== BOOKWORM Sky1 — ISO d'installation ===${NC}"
+echo -e "Distribution   : ${CYAN}$DISTRO_NAME ($DISTRO, $STATUS)${NC}"
 echo -e "ISO officielle : ${CYAN}$SRC_ISO${NC}"
 echo -e "Noyau          : ${CYAN}$KVER ($KPKG_VERSION)${NC}"
 echo -e "Travail        : ${CYAN}$WORK${NC}"
@@ -143,6 +203,7 @@ STATE="$WORK/state.env"
 if $RESUME; then
     [[ -f "$STATE" ]] || die "--resume : $STATE absent (étapes 1-6 pas terminées)"
     source "$STATE"
+    [[ "${STATE_DISTRO:-}" == "$DISTRO" ]] || die "--resume : le dossier de travail vient de ${STATE_DISTRO:-?}, pas de $DISTRO"
     KVER="${KPKG#linux-image-}"
     echo -e "${YELLOW}Reprise à l'étape 7 : $KPKG $KPKG_VERSION, réglages $SETTINGS_VERSION${NC}"
 else
@@ -282,8 +343,8 @@ done
 install -m 644 "$MIN/boot/vmlinuz-$KVER" "$CASPER/vmlinuz-sky1"
 install -m 644 "$MIN/boot/dtb/${DTB_NAME%.dtb}-$KVER.dtb" "$CASPER/$DTB_NAME"
 rm -rf "$L"
-printf 'KPKG=%q\nKPKG_VERSION=%q\nSETTINGS_VERSION=%q\nFW_VERSION=%q\nSIZE_DELTA=%q\n' \
-    "$KPKG" "$KPKG_VERSION" "$SETTINGS_VERSION" "$FW_VERSION" "$SIZE_DELTA" > "$STATE"
+printf 'STATE_DISTRO=%q\nKPKG=%q\nKPKG_VERSION=%q\nSETTINGS_VERSION=%q\nFW_VERSION=%q\nSIZE_DELTA=%q\n' \
+    "$DISTRO" "$KPKG" "$KPKG_VERSION" "$SETTINGS_VERSION" "$FW_VERSION" "$SIZE_DELTA" > "$STATE"
 fi
 
 # =============================================================================
@@ -326,12 +387,11 @@ for f in glob.glob(casper + '/*.manifest.full'):
 EOF
 
 GRUB_CFG="$WORK/iso/boot/grub/grub.cfg"
-python3 - "$GRUB_CFG" "$KVER" "$BOARD_NAME" "$DTB_NAME" "$KERNEL_CMDLINE" << 'EOF'
+python3 - "$GRUB_CFG" "$KVER" "$BOARD_NAME" "$DTB_NAME" "$KERNEL_CMDLINE" "$GRUB_ANCHOR" << 'EOF'
 import sys
-cfg, kver, board, dtb, cmdline = sys.argv[1:]
+cfg, kver, board, dtb, cmdline, anchor = sys.argv[1:]
 txt = open(cfg).read()
-anchor = 'menuentry "Try or Install Ubuntu" {'
-assert txt.count(anchor) == 1, 'entrée « Try or Install Ubuntu » introuvable'
+assert txt.count(anchor) == 1, f'entrée GRUB « {anchor} » introuvable (GRUB_ANCHOR de la distribution)'
 entry = f'''menuentry "Essayer ou installer Ubuntu - {board} (noyau Sky1 {kver})" {{
     set gfxpayload=keep
     linux  /casper/vmlinuz-sky1 {cmdline} --- quiet splash
@@ -339,7 +399,8 @@ entry = f'''menuentry "Essayer ou installer Ubuntu - {board} (noyau Sky1 {kver})
     devicetree /casper/{dtb}
 }}
 '''
-txt = txt.replace(anchor, entry + 'menuentry "Try or Install Ubuntu (noyau Ubuntu generique, ACPI, sans acceleration graphique)" {')
+generic = anchor[:-len('" {')] + ' (noyau Ubuntu generique, ACPI, sans acceleration graphique)" {'
+txt = txt.replace(anchor, entry + generic)
 open(cfg, 'w').write(txt)
 EOF
 # .disk/info reste celui de l'ISO officielle : l'installateur (ProductService d'ubuntu-desktop-bootstrap)
@@ -369,7 +430,7 @@ BOOT_OPTS=$(xorriso -indev "$SRC_ISO" -report_el_torito as_mkisofs 2>/dev/null \
     | grep -vE "^-V |^--modification-date=")
 eval "BOOT_ARGS=( $BOOT_OPTS )"
 rm -f "$OUT_ISO"
-xorriso -as mkisofs -r -iso-level 3 -V "Ubuntu 26.10 Sky1 arm64" "${BOOT_ARGS[@]}" \
+xorriso -as mkisofs -r -iso-level 3 -V "$VOLUME_ID" "${BOOT_ARGS[@]}" \
     -o "$OUT_ISO" "$WORK/iso" > "$WORK/xorriso-mkisofs.log" 2>&1 \
     || { tail -20 "$WORK/xorriso-mkisofs.log"; rm -f "$OUT_ISO"; die "création de l'ISO"; }
 grep -E 'WARNING|SORRY' "$WORK/xorriso-mkisofs.log" || true

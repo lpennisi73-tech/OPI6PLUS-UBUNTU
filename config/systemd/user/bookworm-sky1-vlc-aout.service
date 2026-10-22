@@ -1,0 +1,12 @@
+# BOOKWORM Sky1 — VLC : sortie audio ALSA par défaut, une seule fois par utilisateur
+# (voir /usr/libexec/bookworm-sky1/sky1-vlc-aout)
+[Unit]
+Description=BOOKWORM Sky1 : sortie audio ALSA par défaut pour VLC
+ConditionPathExists=!%h/.local/state/bookworm-sky1/vlc-aout.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/bookworm-sky1/sky1-vlc-aout
+
+[Install]
+WantedBy=default.target

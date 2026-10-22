@@ -310,8 +310,20 @@ cmd_restore() {
 
     echo ""
     echo -e "${RED}${BOLD}TOUT le contenu de $disk ($(disk_desc "$disk")) va être remplacé.${NC}"
-    local want; want=$(basename "$disk")
-    read -r -p "Pour confirmer, tapez le nom du disque ($want) : " a < /dev/tty
+    # Les noms nvme0n1 / nvme1n1 peuvent s'inverser d'un démarrage à l'autre : on compare les n° de série
+    local want tserial; want=$(basename "$disk")
+    tserial="$(lsblk -dno SERIAL "$disk" | sed 's/ *$//')"
+    if [[ -n "$SERIAL" && "$tserial" != "$SERIAL" ]]; then
+        echo -e "${RED}${BOLD}ATTENTION : $disk n'est PAS le disque cloné${NC}"
+        echo "  image : ${MODEL:-?} (n° de série $SERIAL)"
+        echo "  cible : $(disk_desc "$disk")"
+        echo "  Avec deux disques, leurs noms (nvme0n1 / nvme1n1) peuvent s'inverser au démarrage."
+        local what="nom"
+        [[ -n "$tserial" ]] && { want="$tserial"; what="n° de série"; }
+        read -r -p "Pour restaurer quand même sur ce disque, tapez son $what ($want) : " a < /dev/tty
+    else
+        read -r -p "Pour confirmer, tapez le nom du disque ($want) : " a < /dev/tty
+    fi
     [[ "$a" == "$want" ]] || die "confirmation incorrecte : restauration annulée, rien n'a été écrit"
     check_not_mounted "$disk"    # le bureau a pu monter une partition entre-temps
 

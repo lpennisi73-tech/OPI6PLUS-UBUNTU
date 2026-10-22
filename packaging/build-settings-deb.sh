@@ -12,7 +12,8 @@
 # WirePlumber / PipeWire, environnement de session.
 # Les firmwares VPU viennent du paquet officiel de CIX (packaging/fetch-cix-firmware.sh).
 # Les réglages par défaut vont sous /usr ; /etc reste à l'utilisateur et passe en priorité.
-# Version : 1.0.<nombre de commits du dépôt>.
+# Version : 1.1.<nombre de commits qui touchent les fichiers du paquet> (PKG_SOURCES ci-dessous) :
+# un commit de documentation ne change plus la version. La série 1.0.<tous les commits> précède.
 #
 # Usage: ./build-settings-deb.sh [--out <dir>]     (défaut : BUILD_DIR de board.conf)
 # =============================================================================
@@ -38,9 +39,16 @@ OUT_DIR="${OUT_DIR:-$BUILD_DIR}"
 mkdir -p "$OUT_DIR"
 
 PKG=bookworm-sky1-settings
-COUNT=$(git -C "$PROJECT_DIR" rev-list --count HEAD 2>/dev/null || echo 0)
-VERSION="1.0.${COUNT}"
-if [[ -n "$(git -C "$PROJECT_DIR" status --porcelain 2>/dev/null)" ]]; then
+# Fichiers du dépôt qui entrent dans le paquet (à compléter si une nouvelle source est ajoutée)
+PKG_SOURCES=(
+    packaging/build-settings-deb.sh config/board.conf dracut/sky1.conf
+    config/grub config/kernel config/initramfs-tools config/udev config/systemd
+    config/environment.d config/wireplumber config/alsa-card-profile config/pipewire
+    config/vlc config/cpufreq
+)
+COUNT=$(git -C "$PROJECT_DIR" rev-list --count HEAD -- "${PKG_SOURCES[@]}" 2>/dev/null || echo 0)
+VERSION="1.1.${COUNT}"
+if [[ -n "$(git -C "$PROJECT_DIR" status --porcelain -- "${PKG_SOURCES[@]}" 2>/dev/null)" ]]; then
     echo -e "${YELLOW}ATTENTION: dépôt modifié non commité, le paquet ${VERSION} ne correspond à aucun commit${NC}"
 fi
 
@@ -102,14 +110,27 @@ for f in "$C"/udev/*.rules; do inst 644 "$f" "/usr/lib/udev/rules.d/$(basename "
 for f in "$C"/systemd/sleep.conf.d/*.conf; do inst 644 "$f" "/usr/lib/systemd/sleep.conf.d/$(basename "$f")"; done
 for f in "$C"/environment.d/*.conf; do inst 644 "$f" "/usr/lib/environment.d/$(basename "$f")"; done
 for f in "$C"/wireplumber/*.conf; do inst 644 "$f" "/usr/share/wireplumber/wireplumber.conf.d/$(basename "$f")"; done
+for f in "$C"/alsa-card-profile/*.conf; do
+    inst 644 "$f" "/usr/share/alsa-card-profile/mixer/profile-sets/$(basename "$f")"
+done
 for f in "$C"/pipewire/pipewire-pulse.conf.d/*.conf; do
     inst 644 "$f" "/usr/share/pipewire/pipewire-pulse.conf.d/$(basename "$f")"
 done
+
+# --- VLC : sortie audio ALSA par défaut (une fois par utilisateur, à l'ouverture de session) ---
+inst 755 "$C/vlc/sky1-vlc-aout" /usr/libexec/bookworm-sky1/sky1-vlc-aout
+inst 644 "$C/systemd/user/bookworm-sky1-vlc-aout.service" /usr/lib/systemd/user/bookworm-sky1-vlc-aout.service
+mkdir -p "$R/usr/lib/systemd/user/default.target.wants"
+ln -s ../bookworm-sky1-vlc-aout.service "$R/usr/lib/systemd/user/default.target.wants/"
 
 # --- Gouverneur CPU ---
 inst 755 "$C/cpufreq/sky1-cpufreq-tune" /usr/libexec/bookworm-sky1/sky1-cpufreq-tune
 inst 644 "$C/cpufreq/sky1-cpufreq" /etc/default/sky1-cpufreq
 inst 644 "$C/systemd/system/sky1-cpufreq-tune.service" /usr/lib/systemd/system/sky1-cpufreq-tune.service
+
+# --- kdump : noyau de secours sans CMA ni pilotes graphiques (si kdump-tools est installé) ---
+inst 644 "$C/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf" \
+    /usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf
 
 # --- Métadonnées ---
 mkdir -p "$R/DEBIAN"

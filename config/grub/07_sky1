@@ -79,6 +79,8 @@ done | sort -k1,1Vr -k2,2nr | while read -r _base _custom kv; do
         continue
     fi
     gettext_printf "Found Sky1 linux image: %s\n" "/boot/vmlinuz-${kv}" >&2
-    sky1_entry "$kv" "Sky1 ${SKY1_BOARD_NAME} - ${kv} (GPU+NPU)" 7 "" "$dtb"
+    # Entrée normale : GRUB_CMDLINE_LINUX_DEFAULT (« quiet splash » d'Ubuntu : Plymouth), comme 10_linux ;
+    # Recovery sans (messages du noyau à l'écran)
+    sky1_entry "$kv" "Sky1 ${SKY1_BOARD_NAME} - ${kv} (GPU+NPU)" 7 "${GRUB_CMDLINE_LINUX_DEFAULT:+${GRUB_CMDLINE_LINUX_DEFAULT} }" "$dtb"
     sky1_entry "$kv" "Sky1 ${SKY1_BOARD_NAME} - ${kv} (Recovery)" 8 "systemd.unit=rescue.target " "$dtb"
 done

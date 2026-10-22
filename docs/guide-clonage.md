@@ -10,10 +10,15 @@ en état si quelque chose tourne mal.
 
 | | Sur cette machine |
 |---|---|
-| Disque à sauvegarder | NVMe interne **`nvme0n1`**, Crucial **CT1000T500SSD8**, 931,5 Go |
+| Disque à sauvegarder | NVMe interne Crucial **CT1000T500SSD8**, 931,5 Go (`nvme0n1` ou `nvme1n1`, voir ci-dessous) |
 | Disque de sauvegarde | disque USB nommé **`BK_CLONE`** dans ce guide (à remplacer par le nom du vôtre), 1,8 To, exFAT |
 | Clé live | clé Ventoy avec l'ISO BOOKWORM Sky1 (ou l'ISO Ubuntu officielle) |
 
+- **Avec deux SSD NVMe**, leurs noms `nvme0n1` / `nvme1n1` peuvent **s'inverser d'un démarrage à
+  l'autre** : repérer le disque par son **modèle et sa taille** (`bookworm-clone.sh list`) à chaque fois, et
+  remplacer `nvme0n1` dans les commandes de ce guide par le nom qu'il porte à ce démarrage. À la
+  restauration, le script compare le n° de série de la cible à celui du disque cloné et demande une
+  confirmation spéciale s'ils diffèrent.
 - Le disque de sauvegarde doit être en **exFAT, ext4 ou NTFS**, jamais en FAT32 (fichiers limités à 4 Go,
   l'image fait plusieurs centaines de Go).
 - Il lui faut de la place : jusqu'à la taille du NVMe dans le pire cas, beaucoup moins après un TRIM
@@ -69,7 +74,8 @@ Ubuntu fait déjà un TRIM chaque semaine (`fstrim.timer`), mais le faire juste 
    ```bash
    sudo bash bookworm-clone.sh list
    ```
-   Vérifier : **`nvme0n1`** = `CT1000T500SSD8`, 931,5G, **sans** point de montage ;
+   Vérifier : **`nvme0n1`** = `CT1000T500SSD8`, 931,5G, **sans** point de montage (avec deux SSD, le
+   Crucial peut s'appeler `nvme1n1` : prendre le nom affiché à côté de `CT1000T500SSD8`) ;
    **`sda`** (ou `sdb`…) = `BK_CLONE`, 1,8T, transport `usb`, monté dans `/run/media/ubuntu/BK_CLONE`.
 5. Lancer le clonage :
    ```bash
@@ -150,7 +156,8 @@ Ce n'est qu'après ce contrôle qu'on peut installer, tester, casser… sans cra
 ## Règles d'or
 
 1. **Toujours cloner et restaurer depuis la clé live.**
-2. **Lire deux fois le nom du disque** : `nvme0n1` = le NVMe interne à sauvegarder ou restaurer ;
+2. **Lire deux fois le nom du disque** et son **modèle** : le nom (`nvme0n1`, `nvme1n1`) peut changer d'un
+   démarrage à l'autre avec deux SSD, le modèle (`CT1000T500SSD8`) jamais ;
    le disque USB de sauvegarde (`sda`…) ne doit **jamais** être la cible d'un `restore`.
 3. **Un clone sans « terminé et vérifié » n'est pas un clone.**
 4. **Ne pas débrancher** `BK_CLONE` pendant un clonage ou une restauration, et `sync` avant de l'éjecter.

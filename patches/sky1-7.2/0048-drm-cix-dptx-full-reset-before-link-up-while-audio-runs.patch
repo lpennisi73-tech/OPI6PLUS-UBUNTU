@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Wed, 21 Oct 2026 18:00:00 +0200
+Subject: [PATCH] drm/cix: dptx: full reset before link up while audio runs
+
+HDMI audio on Orange Pi 6 Plus goes silent after a screen wake (DPMS
+off/on) when the audio stream stays open: the link comes back with the
+I2S stream already running, SEC0_AUDIO_FIFO_READY stays at 0 and only a
+reboot brings audio back. Re-plugging the cable, toggling AUDIO_ENABLE
+or rebinding the sound card and I2S do not help. The full controller
+reset done at boot (reset_dp_and_reinit) is skipped on these wakes,
+because core_off clears DP_STATE_INIT_TRAIN.
+
+In trilin_dp_prepare(), do the full reset before link up when audio is
+running. Tested on 3 short wakes and 2 wakes after 15 minutes, each with
+the sink bouncing HPD a few seconds later: FIFO_READY back to 1 and
+audio restored every time. Can be turned off with
+trilin_dpsub.audio_reset=0 (writable at runtime).
+
+Signed-off-by: kennytech73 <contact@bookworm-mon0.org>
+---
+--- a/drivers/gpu/drm/cix/dptx/trilin_dptx.c
++++ b/drivers/gpu/drm/cix/dptx/trilin_dptx.c
+@@ -74,6 +74,17 @@ static uint trilin_dp_power_on_delay_ms = DEFUALT_DP_POWER_ON_DELAY_MS;
+ module_param_named(power_on_delay_ms, trilin_dp_power_on_delay_ms, uint, 0444);
+ MODULE_PARM_DESC(power_on_delay_ms, "DP power on delay in msec (default: 4)");
+ 
++/*
++ * When the link is brought back up while an audio stream is running
++ * (screen wake after DPMS off, HPD bounce of the sink), the audio FIFO
++ * of the controller does not resync with the I2S stream and audio stays
++ * silent until reboot (SEC0_AUDIO_FIFO_READY stuck at 0). A full
++ * controller reset before link up, as done at boot, makes it resync.
++ */
++static bool trilin_dp_audio_reset = true;
++module_param_named(audio_reset, trilin_dp_audio_reset, bool, 0644);
++MODULE_PARM_DESC(audio_reset, "Full DP reset before link up while audio is running (default: on)");
++
+ //Define
+ #define MAX_MST_SLOTS 64
+ #define MISC0_USE_SYNC_CLOCK 0
+@@ -3052,6 +3063,10 @@ int trilin_dp_prepare(struct trilin_dp *dp)
+ 	} else if (dp->state & DP_STATE_INIT_TRAIN){
+ 		reset_dp_and_reinit(dp);
+ 		usleep_range(100, 200);
++	} else if (trilin_dp_audio_reset && dp->dp_audio.running) {
++		DP_INFO("audio running: full DP reset before link up\n");
++		reset_dp_and_reinit(dp);
++		usleep_range(100, 200);
+ 	}
+ 
+ 	if (!trilin_dp_is_ready(dp)) {

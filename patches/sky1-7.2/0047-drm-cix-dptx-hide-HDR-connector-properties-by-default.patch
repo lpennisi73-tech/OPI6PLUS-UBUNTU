@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Wed, 21 Oct 2026 09:00:00 +0200
+Subject: [PATCH] drm/cix: dptx: hide HDR connector properties by default
+
+Turning HDR on in GNOME Settings (mutter sets the Colorspace and
+HDR_OUTPUT_METADATA connector properties) crashes the kernel and
+gnome-shell on Orange Pi 6 Plus. HDR on this DP/HDMI path is not usable
+today.
+
+Only attach the Colorspace and HDR_OUTPUT_METADATA properties when the
+new trilin_dpsub.hdr=1 module parameter is set. Without them,
+compositors do not offer HDR, so nothing in userspace can reach the
+broken path. max_bpc (10 bits) and the other properties are unchanged.
+
+Signed-off-by: kennytech73 <contact@bookworm-mon0.org>
+---
+--- a/drivers/gpu/drm/cix/dptx/trilin_drm.c
++++ b/drivers/gpu/drm/cix/dptx/trilin_drm.c
+@@ -1148,12 +1148,23 @@
+ 	.atomic_check = trilin_dp_encoder_atomic_check,
+ };
+ 
++/*
++ * HDR output is not reliable on Sky1: enabling it from GNOME Settings
++ * crashes the kernel and gnome-shell. Without the Colorspace and
++ * HDR_OUTPUT_METADATA properties, compositors do not offer HDR at all.
++ */
++static bool trilin_dp_hdr;
++module_param_named(hdr, trilin_dp_hdr, bool, 0444);
++MODULE_PARM_DESC(hdr, "Expose HDR connector properties (Colorspace, HDR_OUTPUT_METADATA), unstable (default: off)");
++
+ static void trilin_dp_add_properties(struct trilin_dp *dp,
+ 				     struct drm_connector *connector)
+ {
+-	if (!drm_mode_create_dp_colorspace_property(connector, 0))
+-		drm_connector_attach_colorspace_property(connector);
+-	drm_connector_attach_hdr_output_metadata_property(connector);
++	if (trilin_dp_hdr) {
++		if (!drm_mode_create_dp_colorspace_property(connector, 0))
++			drm_connector_attach_colorspace_property(connector);
++		drm_connector_attach_hdr_output_metadata_property(connector);
++	}
+ 
+ 	connector->max_bpc_property = NULL;
+ 	drm_connector_attach_max_bpc_property(connector, 8, 10); //Fixme: max 10 for dpu, but not dp.
+-- 
+2.47.0

@@ -8,7 +8,8 @@ lors du portage Ubuntu ; historique complet dans git). Les parties propres à Op
 Image : la sortie HDMI passe par le convertisseur DP→HDMI Parade PS185HDM (dp4/dpu4). Le noyau 6.18 ne connaît pas `parade,ps185hdm` dans simple-bridge : patch local 9006 (6.18-lts et 6.18.14-lts uniquement ; 6.19 et 7.0 l'ont déjà en amont). `dts-disable-unused-dpu.py` garde dpu3/dp3 (DP natif) et dpu4/dp4 (HDMI), désactive dp0/1/2 et les liens audio dptx0/1_audio (sinon la carte son reste en EPROBE_DEFER).
 Son : carte ALSA `cix_sky1`, périphérique 0 = DP natif, 1 = HDMI. Le profil par défaut (`output:stereo-fallback`) n'expose que le périphérique 0 ; il faut le profil `pro-audio` pour avoir le HDMI. Règles WirePlumber (config/wireplumber/, installées par install.sh, étape 5b) :
 - 51-sky1-hdmi-profile.conf : profil pro-audio par défaut (device.profile.priority.rules). Un profil déjà mémorisé dans ~/.local/state/wireplumber/ passe avant la règle.
-- 52-sky1-hdmi-buffer.conf : node.force-quantum = 4096 sur les deux sinks (à 1024 : des milliers de xruns, son haché ; api.alsa.period-size seul aggrave le problème) et noms « DisplayPort » / « HDMI ».
+- 52-sky1-hdmi-buffer.conf : node.force-quantum = 4096 sur les deux sinks (à 1024 : des milliers de xruns, son haché ; api.alsa.period-size seul aggrave le problème) et noms « DisplayPort » / « HDMI ». HDMI par défaut (2026-10-20) : `priority.session`/`priority.driver` = 1600 (d'origine DP 1500, HDMI 1228 : une installation neuve sortait sur le DP).
+- Faux « Sortie analogique - Audio interne » (2026-10-20) : le profil générique `output:stereo-fallback` de la carte `cix_sky1` annonce une route analogique (c'est en fait `hw:0,0`, le DP) ; la choisir dans GNOME quitte Pro Audio et retire DP et HDMI. `config/alsa-card-profile/sky1-hdmi-dp.conf` (liste de profils sans mapping, choisie par `device.profile-set` dans 51-sky1-hdmi-profile.conf) ne laisse que « Éteint » et « Pro Audio » (vérifié avec `spa-acp-tool -c 0 -p device.profile-set=…`, `ACP_PROFILES_DIR` pour un dossier de test). La vraie sortie analogique (prise ligne de l'ALC269) est sur la carte HDA.
 Pièges de test :
 - `pw-play --target` attend le NOM du nœud (alsa_output.platform-sound.pro-output-1), pas l'ID de `wpctl status` ; un ID inconnu retombe sur le sink par défaut (faux « pas de son », faux « marche une seule fois »).
 - Le bouton « Tester » de GNOME ne marche pas avec Pro Audio (pas de disposition de haut-parleurs) : tester avec pw-play ou une vidéo.
@@ -136,7 +137,10 @@ le build relancé.
   morceaux (latence de sortie élevée). Avec la sortie ALSA (qui passe aussi par PipeWire,
   via `pipewire-alsa`) le son est propre, y compris en AC-3 5.1. Réglage par utilisateur :
   `aout=alsa` dans `~/.config/vlc/vlcrc` (ou *Outils → Préférences → Audio → Module de sortie :
-  ALSA*), ou ponctuellement `vlc --aout=alsa`.
+  ALSA*), ou ponctuellement `vlc --aout=alsa`. Même défaut constaté sur les installations 26.04.1 et
+  26.10 depuis l'ISO (2026-10-21, VLC 3.0.23 en .deb) : depuis le paquet de réglages 1.0.219, le
+  service utilisateur `bookworm-sky1-vlc-aout` pose `aout=alsa` une fois par utilisateur (VLC n'a
+  pas de fichier de configuration système ; `/etc/skel` n'aurait servi qu'aux comptes créés après).
 - **Showtime (lecteur GNOME)** : avec le VPU (`v4l2h264dec`, choisi d'office par GStreamer 1.28)
   image verte figée, sans son (2026-10-16). Depuis les firmwares de CIX (2026-10-18), l'affichage
   VPU → GTK4 fonctionne (`gtk4paintablesink`, playbin3, avec ou sans `glsinkbin` : film fluide),
@@ -147,8 +151,13 @@ le build relancé.
   patch 0046. (2) Déplacement après la 1re image : GTK garde la dernière image (dmabuf du VPU), la file
   de sortie est réallouée pendant que l'entrée tourne, le pilote met le firmware en pause, qui perd son
   contexte et ne sort plus rien ; vider la sortie sans pause est refusé par le firmware. Non corrigé
-  (firmware fermé) : `config/environment.d/90-sky1-gst-v4l2-rank.conf` sort les décodeurs V4L2 de
-  l'autoplug, décodage CPU, image et son parfaits (choix utilisateur du 2026-10-19).
+  (firmware fermé) : `config/environment.d/90-sky1-gst-v4l2-rank.conf` met les décodeurs V4L2 en
+  dernier choix, décodage CPU, image et son parfaits (choix utilisateur du 2026-10-19). Rang `NONE`
+  essayé le 2026-10-19 : `MARGINAL`, pour que le VPU décode quand `gstreamer1.0-libav` manque (live de
+  l'ISO, installation sans « codecs tiers » : sinon « Have text pad but no video pad » dans Showtime).
+  Testé le 2026-10-20 sur l'ISO 26.04.1 : image qui clignote, framebuffer en surimpression, saccades.
+  **Retour à `NONE`** : sans codecs tiers, pas de H.264 dans les lecteurs GStreamer, comme Ubuntu
+  d'origine.
 - **Firmwares VPU** : paquet officiel `cix-vpu-firmware` de CIX (depuis le 2026-10-18 ; avant : copie de
   Sky1-Linux/sky1-firmware, plus ancienne et sans licence). Sans eux, le pilote amvx corrompait sa liste
   interne (corrigé dans le patch 0045). Voir `firmware/README.md`.
@@ -269,3 +278,40 @@ Le firmware a envoyé la réponse différée (canal rx, `scmi_dev.4`) avant que 
 la réponse immédiate arrivée trop tard. Sans conséquence (le son marche). Jamais vu dans les boots
 précédents (config Ubuntu) : la préemption complète change le minutage. À surveiller seulement si
 ça se répète ou si un changement d'horloge échoue.
+
+## 15. Son HDMI qui disparaît jusqu'au redémarrage (2026-10-17 → 2026-10-20, 7.2.11)
+
+- Symptôme : plus aucun son sur le HDMI (sortie PipeWire et PCM `RUNNING`, DMA qui avance), jusqu'au
+  redémarrage. Contrôleur DP du HDMI `14224000` : `SEC0_AUDIO_ENABLE` (0x900) = 1 mais
+  `SEC0_AUDIO_FIFO_READY` (0x930) = 0. Tous les autres registres du flux audio (0x800-0x968) identiques
+  avec et sans son (`diagnostics/audio-dp-regs.sh`), horloges audio comprises (MAUD/NAUD normaux).
+- Reproduit à la demande (`diagnostics/audio-stress-test.sh` : la sortie est fermée puis rouverte à
+  chaque cycle) : blocage au 3e, 7e ou 24e cycle selon les essais.
+- Traces des pilotes (dyndbg, 2026-10-20) : `FIFO_READY` reste à 1 en permanence, même audio coupé et
+  I2S arrêté entre deux sons ; toutes les étapes d'ouverture sont normales ; il passe à 0 **pendant la
+  première seconde de lecture**, puis ne revient jamais. Aucune interruption de sous-remplissage de l'I2S.
+- Sans effet sur un état bloqué : `AUDIO_ENABLE` 0→1, flux secondaire du DP (0x804) 0→1, mode d'horloge,
+  changement d'horloge de l'I2S (44,1 kHz), carte son et I2S détachées/rattachées (reset de l'I2S),
+  rebranchement HDMI (le pilote ne fait alors qu'un `SOFT_RESET` ; la réinitialisation matérielle du DP,
+  `reset_dp_and_reinit`, n'a lieu qu'au démarrage).
+- Correctif essayé : n'activer l'audio du DP qu'après la configuration et le choix d'horloge de l'I2S
+  (op `mute_stream`) : sans effet (blocage au 3e cycle), abandonné.
+- Détacher le pilote DP à chaud (`unbind` de `14224000.dp`) pour forcer la réinitialisation matérielle :
+  **plantage du noyau** (gnome-shell utilise le périphérique DRM démonté :
+  `linlondp_gem_dma_dumb_create`, pointeur nul). À ne pas refaire. kdump a capturé le vidage
+  (`/var/crash/`), ce qui valide kdump sur cette carte.
+- Contournement (2026-10-20) : sorties DP et HDMI jamais mises en veille ni en pause
+  (`config/wireplumber/52-sky1-hdmi-buffer.conf`) : le flux ne démarre qu'une fois par session.
+  `audio-stress-test.sh` ne peut plus fermer la sortie avec ce réglage (il s'arrête aussitôt).
+- 2026-10-21 : son perdu malgré le contournement, **après une extinction de l'écran** (sortie restée
+  `RUNNING` depuis le démarrage, `FIFO_READY` = 0). Au rallumage, `trilin_dp_prepare()` remonte le lien
+  sans `reset_dp_and_reinit` (`core_off` efface `DP_STATE_INIT_TRAIN`) alors que l'I2S tourne ; l'écran
+  Samsung se déconnecte puis se reconnecte 3-5 s après, d'où une 2e remontée du lien.
+- **Patch 0048** : `reset_dp_and_reinit` avant la remontée du lien quand l'audio tourne (paramètre
+  `trilin_dpsub.audio_reset`, défaut 1, modifiable à chaud). Testé (module de test) : 3 réveils courts et
+  2 réveils après 15 min, avec et sans vidéo en cours, 2 resets par réveil, `FIFO_READY` = 1 et son revenu
+  à chaque fois. Le contournement des sorties toujours ouvertes est gardé (le blocage en cours de
+  lecture vu au stress test n'est pas traité par 0048, qui n'agit qu'à la remontée du lien).
+- Défaut voisin, non traité : après le rebond HPD de l'écran, `info_format=0, force support RGB444`
+  → image en 6 bpc au lieu de 8 jusqu'au prochain rebranchement ou démarrage (EDID/couleurs mal lus).
+

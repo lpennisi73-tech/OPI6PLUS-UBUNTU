@@ -1,0 +1,31 @@
+#!/bin/sh
+# =============================================================================
+# sky1-vlc-aout — VLC : sortie audio ALSA par défaut (paquet bookworm-sky1-settings)
+#
+# Avec sa sortie PulseAudio (choix automatique de VLC), le son de VLC est haché sur les
+# sorties DP/HDMI du Sky1 (recalage audio/vidéo du module Pulse ; voir
+# docs/notes-materiel.md §13). La sortie ALSA (qui passe aussi par PipeWire) est propre.
+# Lancé une seule fois par utilisateur, à l'ouverture de session
+# (bookworm-sky1-vlc-aout.service) : met aout=alsa dans ~/.config/vlc/vlcrc si aucune
+# sortie n'y est choisie (aucune ligne aout= active, ou aout=any : « Automatique » enregistré
+# par VLC). Un choix fait ensuite dans VLC, « Automatique » compris, n'est plus jamais touché.
+# =============================================================================
+set -eu
+RC="${XDG_CONFIG_HOME:-$HOME/.config}/vlc/vlcrc"
+MARK="${XDG_STATE_HOME:-$HOME/.local/state}/bookworm-sky1/vlc-aout.done"
+
+if [ ! -e "$RC" ]; then
+    mkdir -p "$(dirname "$RC")"
+    printf '[core] # core program\naout=alsa\n' > "$RC"
+elif grep -q '^aout=any$' "$RC"; then
+    # « Automatique » enregistré par VLC (aout=any) : même chose que pas de choix
+    sed -i 's/^aout=any$/aout=alsa/' "$RC"
+elif ! grep -q '^aout=' "$RC"; then
+    if grep -q '^\[core\]' "$RC"; then
+        sed -i '/^\[core\]/a aout=alsa' "$RC"
+    else
+        printf '\n[core] # core program\naout=alsa\n' >> "$RC"
+    fi
+fi
+mkdir -p "$(dirname "$MARK")"
+: > "$MARK"

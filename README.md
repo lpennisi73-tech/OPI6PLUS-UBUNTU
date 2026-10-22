@@ -1,10 +1,13 @@
 # BOOKWORM Sky1 Kernel Builder
+
+🇫🇷 Français | 🇬🇧 [English](README.en.md)
+
 ### OrangePi 6 Plus — CIX CD8180 — Ubuntu 26.10 ARM64
 
 [![Kernel](https://img.shields.io/badge/Kernel-7.2.11--sky1-blue)](https://www.kernel.org)
 [![GPU](https://img.shields.io/badge/GPU-Mali--G720%20Panthor-green)](https://github.com/visorcraft/orange-pi-6-plus-gpu)
 [![Board](https://img.shields.io/badge/Board-OrangePi%206%20Plus-orange)](http://www.orangepi.org)
-[![OS](https://img.shields.io/badge/OS-Ubuntu%2026.10-E95420)](https://ubuntu.com)
+[![OS](https://img.shields.io/badge/OS-Ubuntu%2026.10%20%7C%2026.04.1%20LTS-E95420)](https://ubuntu.com)
 [![Status](https://img.shields.io/badge/Status-Valid%C3%A9%20✓-brightgreen)]()
 
 > Compilez et installez un noyau Linux 7.2.11 complet pour l'OrangePi 6 Plus sous Ubuntu 26.10 :
@@ -31,9 +34,11 @@ usb 16-1: new SuperSpeed Plus Gen 2x1 USB device number 2 using xhci-hcd
 | USB-C données 10 Gb/s (Type-C rts5453, orientation gérée), USB-A | ✅ |
 | CPU 12 cœurs, cpufreq SCMI, boost 2,6 GHz | ✅ |
 | 2× Ethernet RTL8126 (5 GbE) | ✅ |
+| 2 emplacements M.2 NVMe (SSD1, SSD2) + M.2 Wi-Fi | ✅ |
 | NPU (`/dev/aipu`, 3 cœurs), VPU (`/dev/video0-1`, décodage/encodage) | ✅ |
 | RTC (rx8900), capteurs de température SCMI | ✅ |
-| Extinction / rallumage des écrans | ✅ |
+| Extinction / rallumage des écrans (son HDMI conservé) | ✅ |
+| Vidage mémoire après un plantage du noyau (kdump) | ✅ |
 | **Veille système (suspend)** | ❌ pas de réveil, désactivée (voir Limitations) |
 
 ---
@@ -47,8 +52,16 @@ usb 16-1: new SuperSpeed Plus Gen 2x1 USB device number 2 using xhci-hcd
 | RAM | 32 Go LPDDR5 |
 | GPU | Mali-G720 Immortalis MC10 |
 | Stockage | SSD NVMe |
-| Firmware | BIOS CIX 1.4, **Secure Boot désactivé** (noyau non signé) |
+| Firmware | **BIOS CIX 1.4** (la seule version testée, conseillée), **Secure Boot désactivé** (noyau non signé) |
 | Système | Ubuntu 26.10 arm64 installé et démarré (noyau Ubuntu stock `-generic`) |
+
+Version du BIOS (lisible avec le noyau Ubuntu comme avec le noyau Sky1) :
+```bash
+cat /sys/class/dmi/id/bios_version     # 1.4
+```
+Avec une autre version, le projet n'a pas été testé : mieux vaut passer d'abord le BIOS en 1.4. Le BIOS se
+trouve sur la [page de support officielle de l'Orange Pi 6 Plus](http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/service-and-support/Orange-Pi-6-Plus.html)
+(fichiers hébergés par Orange Pi sur Google Drive).
 
 Le noyau stock d'Ubuntu démarre la carte en ACPI, sans GPU, sans cpufreq et sans le DP/HDMI : il sert
 de base de configuration et de noyau de secours. Le noyau Sky1 démarre, lui, en devicetree.
@@ -76,7 +89,9 @@ sudo reboot
 ./diagnostics/check-system.sh               # après le redémarrage
 ```
 
-La procédure détaillée suit. Pour une ISO d'installation, voir [ISO d'installation](#-iso-dinstallation).
+La procédure détaillée suit. Pour installer Ubuntu directement avec le noyau Sky1, des ISO prêtes à
+l'emploi seront sur [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)
+**à partir du lundi 2 novembre 2026** (voir [ISO d'installation](#-iso-dinstallation)).
 
 ---
 
@@ -85,11 +100,19 @@ La procédure détaillée suit. Pour une ISO d'installation, voir [ISO d'install
 ### 1. Avant de commencer
 
 - Ubuntu 26.10 arm64 installé et démarré sur la carte, avec le noyau Ubuntu `-generic` (il sert de base
-  de configuration et de secours) ; **Secure Boot désactivé** dans le BIOS (le noyau n'est pas signé).
+  de configuration et de secours) ; **BIOS CIX 1.4** (`cat /sys/class/dmi/id/bios_version`) et
+  **Secure Boot désactivé** dans le BIOS (le noyau n'est pas signé).
 - **Place disque** : ~25 Go libres sous `/usr/src/build` (sources, objets, paquets).
 - **Durée** (Orange Pi 6 Plus, 12 cœurs) : ~1 h 20 en local, ~1 h avec distcc ; `--no-dbg` retire ~16 min.
-- Lancer le build dans une session qui survit à une déconnexion ou à un redémarrage de GNOME :
-  `tmux` (ou `screen`), voire depuis une connexion SSH.
+- Lancer le build dans une session qui survit à une déconnexion ou à un plantage de GNOME (sinon le
+  build meurt avec le terminal) : `screen` (installé avec Ubuntu), `tmux`, une connexion SSH, ou un
+  service systemd, qui ne dépend d'aucune session :
+  ```bash
+  sudo systemd-run --unit=sky1-build --working-directory="$PWD" bash -c './bookworm-sky1-build.sh --install --no-dbg'
+  journalctl -fu sky1-build        # suivre le build (Ctrl+C n'arrête que l'affichage)
+  ```
+  Avec distcc : `bash -c 'source ./distcc-env.sh && ./bookworm-sky1-build.sh --install --no-dbg'`.
+  À la fin, `systemctl status sky1-build` indique le code de sortie.
 - Conseillé : menu GRUB visible, pour pouvoir revenir au noyau Ubuntu si besoin. Dans
   `/etc/default/grub` : `GRUB_TIMEOUT_STYLE=menu` et `GRUB_TIMEOUT=15`, puis `sudo update-grub`.
   Les scripts ne modifient jamais ce fichier.
@@ -137,7 +160,7 @@ l'édition de liens et l'empaquetage restent sur la carte).
 ### 4. Lancer le build
 
 ```bash
-tmux                                        # facultatif mais conseillé
+screen                                      # facultatif mais conseillé (ou systemd-run, étape 1)
 sudo ./bookworm-sky1-build.sh --install     # ou --install --no-dbg
 ```
 
@@ -224,9 +247,9 @@ Avant de retirer le dernier noyau Sky1, démarrer sur le noyau Ubuntu.
 
 ### Pour comprendre : ce que fait le build (`bookworm-sky1-build.sh`)
 1. télécharge `linux-7.2.11.tar.xz` depuis kernel.org et l'extrait ;
-2. applique la **série Sky1** du dépôt (`patches/sky1-7.2/`, 45 patches) en **mode strict** (aucun fuzz) ;
+2. applique la **série Sky1** du dépôt (`patches/sky1-7.2/`, 48 patches) en **mode strict** (aucun fuzz) ;
 3. applique les **correctifs locaux** `patches/fixes/9xxx-*.patch` ;
-4. applique les **fixes DTS / pilotes** `patches/fixes/*.py` (slots PCIe vides, zones thermiques…) ;
+4. applique les **fixes DTS / pilotes** `patches/fixes/*.py` (slot PCIe vide, zones thermiques…) ;
 5. prend la config du noyau Ubuntu `-generic` la plus récente, y injecte la config Sky1
    (`config/sky1/config.sky1-next`), force les options indispensables (`FORCE_BUILTIN`, `FORCE_DISABLED`
    du track) et vérifie qu'`olddefconfig` ne les a pas défaites ;
@@ -258,7 +281,30 @@ même nom dans `/etc` reste prioritaire. Contenu :
 - config dracut, modules chargés au boot et options (`MODULES_AUTOLOAD`, `MODPROBE_OPTIONS`) ;
 - udev USB-C et GPU, blocage de la veille, environnement de session, PipeWire/WirePlumber ;
 - gouverneur CPU réglé pour le bureau (`sky1-cpufreq-tune.service`, réglages dans `/etc/default/sky1-cpufreq`,
-  lancé seulement sur l'entrée Sky1).
+  lancé seulement sur l'entrée Sky1) ;
+- VLC en sortie ALSA (service utilisateur, une fois par utilisateur) ;
+- noyau de secours kdump adapté à la carte (si `kdump-tools` est installé, voir GRUB plus bas).
+
+Version : `1.1.<n>`, où `<n>` compte les commits qui touchent les fichiers du paquet (liste `PKG_SOURCES`
+de `packaging/build-settings-deb.sh`) : un commit de documentation ne change pas la version. Les
+versions `1.0.x` (jusqu'au 21 octobre 2026) comptaient tous les commits ; `1.1.x` leur succède
+normalement à la mise à jour.
+
+Où trouver les fichiers (liste complète : `dpkg -L bookworm-sky1-settings`) :
+
+| Réglage | Fichiers du paquet | Pour le changer |
+|---|---|---|
+| Session (GNOME, GTK, GStreamer) | `/usr/lib/environment.d/90-sky1-*.conf` | même nom dans `/etc/environment.d/` (ou `~/.config/environment.d/`) |
+| udev (GPU, USB-C) | `/usr/lib/udev/rules.d/90-sky1-*.rules` | même nom dans `/etc/udev/rules.d/` |
+| Veille | `/usr/lib/systemd/sleep.conf.d/90-sky1-no-suspend.conf` | `/etc/systemd/sleep.conf.d/` |
+| Son | `/usr/share/wireplumber/wireplumber.conf.d/5*-sky1-*.conf`, `/usr/share/pipewire/pipewire-pulse.conf.d/`, `/usr/share/alsa-card-profile/mixer/profile-sets/sky1-hdmi-dp.conf` | `/etc/wireplumber/wireplumber.conf.d/` |
+| Modules, dracut | `/usr/lib/modules-load.d/`, `/usr/lib/modprobe.d/`, `/usr/lib/dracut/dracut.conf.d/` (`bookworm-sky1*`) | même nom dans `/etc/…` |
+| VLC (sortie ALSA) | `/usr/libexec/bookworm-sky1/sky1-vlc-aout`, service utilisateur `bookworm-sky1-vlc-aout` | dans VLC (*Préférences → Audio*) : le choix n'est plus jamais touché |
+| kdump (noyau de secours) | `/usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf` | `KDUMP_CMDLINE_APPEND` dans `/etc/default/kdump-tools` |
+| GRUB, cpufreq, DTB | `/etc/grub.d/07_sky1`, `/etc/default/bookworm-sky1`, `/etc/default/sky1-cpufreq`, `/etc/kernel/post*.d/zz-bookworm-sky1-dtb` | ces fichiers directement (gardés lors des mises à jour) |
+
+`/etc/environment.d/` est donc normalement vide de réglages Sky1. Pour vérifier qu'ils sont actifs :
+`systemctl --user show-environment | grep -E 'COGL|GDK_DISABLE|GST_PLUGIN'`.
 
 Tout retirer : `sudo apt purge bookworm-sky1-settings`.
 
@@ -279,7 +325,9 @@ Linux 7.2** dans ce dépôt (`patches/sky1-7.2/`, décisions patch par patch dan
 - 43 patches Sky1-Linux, dont 11 adaptés aux changements de Linux 7.2 ;
 - `0044` (BOOKWORM) : pilotes du constructeur adaptés aux API de Linux 7.2 ;
 - `0045` (BOOKWORM) : écran fantôme, cache firmware du VPU, deux avertissements noyau ;
-- `0046` (BOOKWORM) : VPU bloqué quand un lecteur se déplace dans la vidéo pendant sa mise en route.
+- `0046` (BOOKWORM) : VPU bloqué quand un lecteur se déplace dans la vidéo pendant sa mise en route ;
+- `0047` (BOOKWORM) : HDR masqué (son activation plantait le noyau et GNOME) ;
+- `0048` (BOOKWORM) : son HDMI perdu au réveil de l'écran (réinitialisation complète du contrôleur DP).
 
 La config Sky1 de référence est copiée dans `config/sky1/` : le build ne dépend plus de linux-sky1.
 Pour porter la série sur une version suivante (7.3…), voir `tools/portage-sky1/README.md`.
@@ -311,13 +359,23 @@ l'historique git).
 | Entrée GRUB du 7.0 avant celle du 7.2 | tri alphabétique de `/etc/grub.d` | `/etc/grub.d/07_sky1` trie les noyaux Sky1 par version |
 
 Correctifs repris de l'époque Gentoo, toujours appliqués : SError sur slot PCIe vide
-(`pci-sky1-link-down-guard.py`), slots PCIe vides désactivés dans le DTS, boost SCMI dès le démarrage
-(`9004`), écran noir au réveil HDMI (`9007`), son DP/HDMI (`9001`, `9009`), VPU (`9002`, `9003`), USB
-Cadence (`9005`, `9008`).
+(`pci-sky1-link-down-guard.py`), boost SCMI dès le démarrage (`9004`), écran noir au réveil HDMI
+(`9007`), son DP/HDMI (`9001`, `9009`), VPU (`9002`, `9003`), USB Cadence (`9005`, `9008`).
+
+Tous les emplacements PCIe de la carte sont actifs : les deux M.2 pour SSD NVMe (« SSD1 » `a070000`,
+« SSD2 » `a010000`), le M.2 Wi-Fi (`a0d0000`) et les deux Ethernet 5G. Un emplacement vide est signalé au
+démarrage par `PCIe link down, slot may be empty`, sans erreur. L'ancien correctif Gentoo qui
+désactivait SSD1 et Wi-Fi dans le DTS a été retiré (2026-10-21) : il rendait un 2e SSD ou une carte Wi-Fi
+M.2 invisibles.
 
 ---
 
 ## ⚠️ Limitations connues
+
+### Écran noir au démarrage (BIOS et HDMI)
+Bug connu du BIOS CIX : au démarrage, il arrive que **rien ne s'affiche sur l'écran HDMI** (pas de logo, pas
+de menu). La carte n'est pas en panne : appuyer sur **Ctrl+Alt+Suppr** pour la redémarrer, l'image revient
+en général au démarrage suivant. Recommencer si besoin.
 
 ### Veille système : désactivée
 Ni `deep` ni `s2idle` ne se réveillent sur cette carte (clavier, souris, bouton d'alimentation, alarme
@@ -325,26 +383,72 @@ RTC) : il faut couper le courant. `config/systemd/sleep.conf.d/90-sky1-no-suspen
 mise en veille (GNOME masque « Mettre en veille »). L'**extinction des écrans fonctionne** normalement.
 Diagnostic prévu avec la console série (`ttyAMA2`, 115200 bauds).
 
+### HDR : désactivé
+Activer le HDR dans *Paramètres → Écrans* faisait planter le noyau et la session GNOME. Depuis le patch
+0047, le pilote du DP n'annonce plus les propriétés HDR (`Colorspace`, `HDR_OUTPUT_METADATA`) : GNOME
+n'affiche plus l'option. Le 10 bits reste disponible. Pour tester le HDR malgré tout (à vos risques) :
+paramètre noyau `trilin_dpsub.hdr=1`.
+
+### Son HDMI qui disparaît jusqu'au redémarrage
+De temps en temps, la file audio du contrôleur DP qui alimente le HDMI se bloque, dans la seconde qui
+suit le démarrage d'un son (environ une fois toutes les 5 à 25 ouvertures de la sortie, mesuré avec
+`diagnostics/audio-stress-test.sh`). Le son reste alors coupé ; seul un redémarrage le rétablit
+(rebranchement du câble, rechargement de la carte son ou de l'I2S : sans effet). Pour l'éviter, les
+sorties DP et HDMI restent ouvertes en permanence (elles envoient du silence) : la file ne démarre plus
+qu'une fois par session au lieu d'à chaque son.
+
+Même avec les sorties ouvertes, le blocage se produisait au réveil de l'écran (extinction puis
+rallumage, souvent suivi d'une déconnexion/reconnexion de l'écran) : le lien DP repart alors que le son
+tourne déjà. Depuis le patch 0048, le pilote fait dans ce cas la réinitialisation complète du contrôleur
+DP, comme au démarrage, et le son revient. Réglable à chaud : `trilin_dpsub.audio_reset=0` pour la
+couper. Si le son disparaît malgré tout : redémarrer.
+
 ### Vidéo dans le bureau : décodage par le CPU
 Le VPU décode correctement (environ 200 images/s en 1080p H.264) et ses images s'affichent dans GTK4,
 mais le lecteur GNOME (Showtime) reste sur un écran noir : il reprend la vidéo à la dernière position,
 et ce déplacement juste après le démarrage bloque le VPU. Un premier défaut du pilote est corrigé
 (patch `0046`) ; le second vient du firmware de CIX, qui perd son contexte quand la file de sortie est
 réallouée en cours de décodage (l'affichage GTK garde la dernière image) et refuse l'autre façon de
-faire. `config/environment.d/90-sky1-gst-v4l2-rank.conf` retire donc les décodeurs V4L2 du choix
-automatique de GStreamer : les lecteurs décodent par le CPU, sans difficulté (un film 1080p H.264
-passe sans saccade). Le VPU reste utilisable explicitement :
+faire ; l'affichage du VPU dans le bureau clignote aussi (image du framebuffer en surimpression,
+saccades). `config/environment.d/90-sky1-gst-v4l2-rank.conf` retire donc les décodeurs V4L2 du choix
+automatique de GStreamer : les lecteurs décodent par le CPU, sans difficulté (un film 1080p H.264 passe
+sans saccade). Le décodeur CPU vient de `gstreamer1.0-libav`, que l'installateur pose seulement avec la
+case **« Installer les logiciels tiers / codecs »** : cochez-la, ou installez-le ensuite
+(`sudo apt install gstreamer1.0-libav`). Sans lui (session live, installation sans codecs tiers), les
+lecteurs GStreamer ne lisent pas le H.264, comme sur Ubuntu d'origine (VLC, qui a ses propres codecs,
+fonctionne). Le VPU reste utilisable explicitement :
 ```bash
 gst-launch-1.0 filesrc location=video.mp4 ! qtdemux ! h264parse ! v4l2h264dec ! fakesink
 ```
 
-### VLC : choisir la sortie ALSA
+### Showtime sur Ubuntu 26.04.1 : vidéo saccadée
+Sur la 26.04.1 seulement, le lecteur vidéo de GNOME (Showtime) saccade, quel que soit le rendu de GTK
+(`GSK_RENDERER=gl` et `cairo` sans effet, `vulkan` en erreur) : le défaut est dans Showtime de la 26.04.1. Le système et les autres lecteurs sont fluides :
+**utilisez VLC** (Ubuntu Software / App Center). Sur la 26.10, Showtime fonctionne parfaitement.
+
+### VLC : sortie ALSA par défaut
 Même avec des tampons corrects, le module de sortie PulseAudio de VLC 3 hache le son par moments sur
 les sorties DP/HDMI. Avec la sortie ALSA (qui passe aussi par PipeWire), le son est propre, y compris en
-AC-3 5.1 : *Outils → Préférences → Audio → Module de sortie : ALSA*, ou `aout=alsa` dans
-`~/.config/vlc/vlcrc`.
+AC-3 5.1. Le paquet de réglages le fait pour chaque utilisateur, **une seule fois**, à l'ouverture de
+session (service utilisateur `bookworm-sky1-vlc-aout`) : `aout=alsa` est ajouté à
+`~/.config/vlc/vlcrc` si aucune sortie n'y est choisie ou si elle est sur « Automatique » (`aout=any`)
+(fichier créé s'il n'existe pas ; VLC peut être installé avant ou après). Un choix fait ensuite dans
+*Outils → Préférences → Audio → Module de sortie*, « Automatique » compris, est gardé. Pour que le service repasse : supprimer `~/.local/state/bookworm-sky1/vlc-aout.done`.
+VLC en snap (dossier `~/snap/vlc/`) n'est pas concerné : régler la sortie à la main.
+
+### Blocage rare du GPU
+Le GPU (pilote panthor) peut se bloquer d'un coup (`CSG … update request timedout`, `Failed to stop MCU`
+dans `journalctl -k`) : gnome-shell redémarre en rendu logiciel, la session est perdue, et seul un
+redémarrage rend le GPU. Devenu rare depuis que le GPU n'a plus de veille runtime (règle udev du paquet),
+mais vu deux fois le 21 octobre 2026 (dont une fois pendant une compilation du noyau, qui est morte avec le
+terminal : d'où le conseil de lancer le build hors de la session). Cause non trouvée ; si ça arrive,
+notez l'heure et ce que vous faisiez.
 
 ### Autres
+- **Image en 6 bits par couleur après une reconnexion de l'écran** : quand l'écran se déconnecte puis se
+  reconnecte tout seul (souvent au réveil), le pilote lit mal ses capacités et force 6 bits par couleur
+  (`info_format=0, force support RGB444` dans `journalctl -k`) : bandes visibles dans les dégradés,
+  jusqu'au prochain rebranchement ou redémarrage.
 - **Températures** : le firmware refuse d'activer les capteurs SCMI (`Error enabling sensor … err=-2`) :
   lecture possible (`sensors`), mais pas de zones thermiques ni de limitation par le noyau.
 - **EC** `cros-ec-i2c` (I2C 6-0076) : ne répond pas (`error -71`), sans effet constaté.
@@ -363,8 +467,12 @@ AC-3 5.1 : *Outils → Préférences → Audio → Module de sortie : ALSA*, ou 
 Carte ALSA `cix_sky1` : périphérique 0 = DisplayPort, 1 = HDMI (convertisseur DP→HDMI Parade PS185HDM
 sur `dp4`). Le paquet `bookworm-sky1-settings` installe :
 - `config/wireplumber/` : profil **Pro Audio** par défaut (sans lui, seul le DP est exposé), sorties
-  nommées « DisplayPort » et « HDMI », quantum forcé à 4096 (le son hache à 1024) ;
-- `config/pipewire/pipewire-pulse.conf.d/` : tampons des applications PulseAudio alignés sur ce quantum.
+  nommées « DisplayPort » et « HDMI », **HDMI par défaut**, quantum forcé à 4096 (le son hache à 1024) ;
+- `config/alsa-card-profile/` : profils de la carte réduits à « Éteint » et « Pro Audio » (le profil
+  générique proposait une « Sortie analogique » inexistante qui faisait disparaître DP et HDMI) ;
+- `config/pipewire/pipewire-pulse.conf.d/` : tampons des applications PulseAudio alignés sur ce quantum ;
+- sorties DP et HDMI **jamais mises en veille ni en pause** (`session.suspend-timeout-seconds = 0`,
+  `node.pause-on-idle = false`) : voir « Son HDMI qui disparaît » dans les limitations, plus haut.
 
 Un profil audio déjà mémorisé par WirePlumber pour un utilisateur (`~/.local/state/wireplumber/`) reste
 prioritaire. Le bouton « Tester » de GNOME ne fonctionne pas avec le profil Pro Audio.
@@ -377,7 +485,20 @@ prioritaire. Le bouton « Tester » de GNOME ne fonctionne pas avec le profil Pr
   noyau, `acpi=off`, paramètres de `/etc/default/bookworm-sky1`. La plus récente est la première =
   entrée par défaut avec `GRUB_DEFAULT=0`. L'entrée automatique d'Ubuntu (`10_linux`) pour le même
   noyau démarre en ACPI, sans devicetree : ne pas l'utiliser.
-- Entrée **Recovery** : `systemd.unit=rescue.target`.
+- **Logo Ubuntu au démarrage (Plymouth)** : l'entrée normale reprend `GRUB_CMDLINE_LINUX_DEFAULT` de
+  `/etc/default/grub` (`quiet splash` sur Ubuntu), comme `10_linux`. Pour voir les messages du noyau à
+  la place, retirez `quiet splash` de cette ligne puis `sudo update-grub`.
+- Entrée **Recovery** : `systemd.unit=rescue.target`, sans `quiet splash` (messages du noyau à l'écran).
+- **`crashkernel=…`** : ajouté à `GRUB_CMDLINE_LINUX_DEFAULT` par `kdump-tools`, que l'installateur
+  d'Ubuntu active quand la machine a au moins 6 Go de RAM et assez de place dans `/var` (5 × la RAM).
+  Il réserve de la mémoire pour un noyau de secours qui enregistre un vidage dans `/var/crash` si le
+  noyau plante : environ 640 Mo sur une carte de 16 Go, 1,1 Go sur 32 Go. Le premier démarrage après
+  l'installation d'un noyau prépare son initrd de secours (environ 45 s de plus, une seule fois). Pour
+  le retirer : `sudo apt purge kdump-tools linux-crashdump && sudo update-grub`. Le live de l'ISO n'est
+  pas concerné. Le paquet de réglages adapte le noyau de secours à la carte
+  (`/usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf`) : `cma=0` et pilotes GPU,
+  NPU, VPU, affichage et DSP exclus, sans quoi il manque de mémoire et n'écrit rien. Une valeur de
+  `KDUMP_CMDLINE_APPEND` posée dans `/etc/default/kdump-tools` passe devant.
 - `console=ttyAMA2,115200 console=tty0` : messages sur la console série et à l'écran ; consoles texte
   (Ctrl+Alt+F3) disponibles.
 - Désinstaller un noyau : `sudo apt remove linux-image-<version> linux-headers-<version>` ; son DTB
@@ -400,14 +521,42 @@ Les sessions GNOME existantes gardent leurs propres réglages (Paramètres → R
 
 ## 💿 ISO d'installation
 
-> En test, **non officielle et non publiée** pour l'instant (licences : voir `firmware/README.md`).
-> Ce n'est pas une ISO Ubuntu officielle : ne pas la présenter comme telle.
+> **Non officielle** : ce n'est pas une ISO Ubuntu officielle, ne pas la présenter comme telle
+> (licences des firmwares : voir `firmware/README.md`).
 
-`iso/build-iso.sh` part de l'ISO officielle `ubuntu-26.10-desktop-arm64.iso` (jamais modifiée) et y
+**ISO prêtes à l'emploi : [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
+avec leur fichier `.sha256`, **disponibles à partir du lundi 2 novembre 2026** (avant cette date, elles
+ne sont pas encore en ligne). Après le téléchargement, vérifier l'ISO avant de l'écrire sur une clé :
+```bash
+sha256sum -c ubuntu-*-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256    # doit afficher « OK »
+```
+puis passer directement à l'étape 4 (écrire l'ISO sur une clé). Les étapes 1 à 3 servent à construire
+l'ISO soi-même.
+
+`iso/build-iso.sh` part d'une ISO officielle d'Ubuntu (jamais modifiée) et y
 ajoute le noyau Sky1 et `bookworm-sky1-settings`, à la fois dans le **système live** et dans le système
 que l'**installateur Ubuntu** copie sur le disque. Le menu de l'ISO démarre par défaut sur le noyau Sky1
 (devicetree + `acpi=off`) ; l'entrée Ubuntu d'origine reste disponible. Après installation, le disque a
 les mêmes entrées GRUB qu'avec install.sh (Sky1 par défaut, noyau Ubuntu en secours).
+
+### Choisir la version d'Ubuntu (`--distro`)
+
+Comme les *tracks* du noyau, chaque version d'Ubuntu a son fichier `config/distros/<distro>.conf` : ISO
+officielle, adresse de téléchargement, empreinte SHA256 figée, nom de l'ISO produite.
+`sudo iso/build-iso.sh --list-distros` les affiche.
+
+| `--distro` | Base | Mises à jour d'Ubuntu | État |
+|---|---|---|---|
+| `ubuntu-26.10` (défaut) | Ubuntu 26.10 | 9 mois (jusqu'en juillet 2027) | validée (live + installation) |
+| `ubuntu-26.04.1` | Ubuntu 26.04.1 LTS | 5 ans (jusqu'en avril 2031) | validée (live + installation), voir « Showtime sur 26.04.1 » |
+
+Le **noyau Sky1, ses réglages et les firmwares VPU sont les mêmes** quelle que soit la version : ils ne
+viennent pas d'Ubuntu, et leurs mises à jour viennent de ce projet. Avec une LTS, Ubuntu met à jour tout le
+reste du système pendant 5 ans.
+
+Ajouter une version : copier un fichier de `config/distros/`, y mettre le nom de l'ISO, son adresse et son
+empreinte (prise dans le `SHA256SUMS` signé d'Ubuntu), puis tester le live et l'installation avant de
+passer `STATUS="stable"`.
 
 ### 1. Prérequis
 
@@ -417,30 +566,32 @@ les mêmes entrées GRUB qu'avec install.sh (Sky1 par défaut, noyau Ubuntu en s
 - **~35 Go libres** sous `/usr/src/build/sky1-iso` (le script vérifie et s'arrête sinon), plus ~5 Go pour l'ISO produite.
 - Durée : ~20 à 40 min, surtout la recompression des couches squashfs.
 
-### 2. Télécharger et vérifier l'ISO officielle
+### 2. L'ISO officielle
 
-```bash
-mkdir -p /usr/src/build/sky1-iso && cd /usr/src/build/sky1-iso
-wget https://cdimage.ubuntu.com/releases/26.10/release/ubuntu-26.10-desktop-arm64.iso
-wget https://cdimage.ubuntu.com/releases/26.10/release/SHA256SUMS
-sha256sum -c SHA256SUMS --ignore-missing          # doit afficher : ubuntu-26.10-desktop-arm64.iso: OK
-```
+Rien à faire : si elle manque dans `/usr/src/build/sky1-iso/`, le script la télécharge. Il vérifie d'abord la
+**signature d'Ubuntu** sur la liste `SHA256SUMS` (clé `ubuntu-cdimage-keyring`), puis que l'empreinte figée
+dans `config/distros/` y figure, puis l'empreinte de l'ISO téléchargée. À chaque construction, l'empreinte de
+l'ISO présente est contrôlée : une ISO abîmée ou différente arrête le script (la supprimer pour la
+retélécharger).
 
 ### 3. Construire l'ISO
 
 ```bash
 cd ~/bookworm-sky1-kernel-ubuntu                   # le dépôt
-sudo iso/build-iso.sh
+sudo iso/build-iso.sh                              # Ubuntu 26.10
+sudo iso/build-iso.sh --distro ubuntu-26.04.1      # Ubuntu 26.04.1 LTS
 ```
 
 | Option de `build-iso.sh` | Effet |
 |---|---|
-| `--iso <fichier>` | ISO officielle (défaut : `/usr/src/build/sky1-iso/ubuntu-26.10-desktop-arm64.iso`) |
+| `--distro <distro>` | version d'Ubuntu, fichier `config/distros/<distro>.conf` (défaut : `ubuntu-26.10`) |
+| `--list-distros` | lister les versions disponibles |
+| `--iso <fichier>` | utiliser cette ISO officielle telle quelle (défaut : celle de la distribution, téléchargée si absente ; une empreinte différente donne un avertissement) |
 | `--kernel-deb <fichier>` | paquet noyau (défaut : le `linux-image-*-sky1-custom` le plus récent de `/usr/src/build/sky1-kernel`) |
-| `--out <fichier>` | ISO produite (défaut : `…/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-<date>.iso`) |
+| `--out <fichier>` | ISO produite (défaut : `…/sky1-iso/ubuntu-<version>-bookworm-sky1-orangepi6plus-arm64-<date>.iso`) |
 | `--work <dossier>` | dossier de travail (défaut : `/usr/src/build/sky1-iso/work`, effacé au départ) |
 | `--keep-work` | garder le dossier de travail à la fin |
-| `--resume` | reprendre à l'étape 7 après un échec en fin de script (étapes 1 à 6 déjà faites) |
+| `--resume` | reprendre à l'étape 7 après un échec en fin de script (étapes 1 à 6 déjà faites, même `--distro`) |
 
 Ce que fait chaque étape :
 1. extrait l'ISO officielle dans le dossier de travail ;
@@ -466,36 +617,40 @@ Si le script s'arrête aux étapes 7 ou 8, corriger puis `sudo iso/build-iso.sh 
 minutes). Une erreur plus tôt : relancer sans `--resume`, le dossier de travail est refait.
 Tous les montages (chroot, overlay) sont démontés à la sortie, même en cas d'erreur.
 
-La fin affiche le chemin, la taille (~4,6 Go) et le SHA256 de l'ISO. Vérification :
+La fin affiche le chemin, la taille (~4,5 Go pour la 26.04.1, ~4,9 Go pour la 26.10) et le SHA256 de l'ISO. Vérification :
 ```bash
-cd /usr/src/build/sky1-iso && sha256sum -c ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256
+cd /usr/src/build/sky1-iso && sha256sum -c ubuntu-*-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256
 ```
 
 ### 4. Écrire l'ISO sur une clé USB (≥ 8 Go)
 
 > ⚠️ `dd` efface **tout** le périphérique visé, sans confirmation. Ne jamais viser `nvme0n1` (le disque
-> système). Une seule commande `dd` à la fois, et toujours sur la **clé entière** (`/dev/sda`), jamais sur
-> une partition (`/dev/sda1`) : deux `dd` en même temps sur la même clé donnent une clé corrompue.
+> système). Une seule commande `dd` à la fois, et toujours sur la **clé entière** (`/dev/sdX`), jamais sur
+> une partition (`/dev/sdX1`) : deux `dd` en même temps sur la même clé donnent une clé corrompue.
+
+Dans les commandes ci-dessous, **`sdX` est à remplacer** par le nom de la clé (souvent `sda` ou `sdb`), et
+`ISO=` par le chemin de votre ISO : celle construite à l'étape 3 (dans `/usr/src/build/sky1-iso/`) ou
+celle téléchargée (par exemple dans `~/Téléchargements/`).
 
 1. Brancher la clé et l'identifier (colonne `TRAN` = `usb`, taille et modèle de la clé) :
    ```bash
    lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINTS
    ```
-2. Démonter ses partitions si le bureau les a montées (ici la clé est `sda`) :
+2. Démonter ses partitions si le bureau les a montées :
    ```bash
-   sudo umount /dev/sda?*
+   sudo umount /dev/sdX?*
    ```
 3. Écrire l'ISO, puis vider les tampons :
    ```bash
-   sudo dd if=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-<date>.iso of=/dev/sda bs=4M conv=fsync status=progress
+   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261022.iso
+   sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
    sync
    ```
    Le débit affiché au début (plusieurs Go/s) est celui de la mémoire vive : la commande ne rend la main
    qu'une fois tout écrit sur la clé, ce qui prend plusieurs minutes.
 4. Vérifier que la clé contient exactement l'ISO :
    ```bash
-   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-<date>.iso
-   sudo cmp -n "$(stat -c %s "$ISO")" "$ISO" /dev/sda && echo "clé identique à l'ISO"
+   sudo cmp -n "$(stat -c %s "$ISO")" "$ISO" /dev/sdX && echo "clé identique à l'ISO"
    ```
 
 **Avec Ventoy** : copier simplement le fichier `.iso` sur la partition Ventoy (pas de `dd`). Au démarrage,
@@ -505,7 +660,8 @@ En cas d'échec avec Ventoy, tester une clé écrite avec `dd` pour savoir si le
 ### 5. Démarrer sur la clé
 
 1. Brancher la clé sur l'Orange Pi 6 Plus et choisir la clé dans le menu de démarrage du firmware
-   (Secure Boot désactivé).
+   (**BIOS CIX 1.4** conseillé, Secure Boot désactivé). Écran HDMI noir dès l'allumage : bug connu du
+   BIOS, **Ctrl+Alt+Suppr** pour redémarrer (voir Limitations).
 2. Menu GRUB de l'ISO :
    - **« Essayer ou installer Ubuntu - Orange Pi 6 Plus (noyau Sky1 …) »** : entrée par défaut, à utiliser ;
    - « Try or Install Ubuntu (noyau Ubuntu generique, ACPI, sans acceleration graphique) » : noyau
@@ -518,6 +674,11 @@ En cas d'échec avec Ventoy, tester une clé écrite avec `dd` pour savoir si le
 ### 6. Installer (sur un disque sauvegardé)
 
 > L'installation efface le disque choisi : faire d'abord une sauvegarde (clone) du disque de la carte.
+
+**Avec deux SSD**, choisir le disque dans l'installateur par son **modèle et sa taille**, jamais par son nom :
+`nvme0n1` et `nvme1n1` peuvent s'inverser d'un démarrage à l'autre (constaté sur cette carte : le même SSD
+s'appelait `nvme1n1` à un démarrage, `nvme0n1` au suivant). Pour les repérer depuis le live :
+`lsblk -o NAME,SIZE,MODEL,SERIAL`.
 
 L'installateur est celui d'Ubuntu. À la fin, le disque contient le noyau Sky1, `bookworm-sky1-settings`
 et le noyau Ubuntu de secours ; GRUB démarre par défaut sur l'entrée Sky1 (créée par `/etc/grub.d/07_sky1`,
@@ -555,6 +716,7 @@ sudo ./bookworm-clone.sh restore /media/ubuntu/SAUVEGARDE/clone-nvme0n1-<date> /
 | Cible assez grande | — | ✅ |
 | Image vérifiée (empreinte + taille) | après écriture | **avant** d'écrire |
 | Confirmation en tapant le nom du disque | — | ✅ |
+| Cible ≠ disque cloné (n° de série différent) : avertissement, confirmation par le n° de série | — | ✅ |
 | Disque relu et comparé à l'image | — | ✅ |
 
 L'image est écrite en `disk.img.zst.partial` et renommée seulement si la copie est complète. Taille de
@@ -604,14 +766,17 @@ bookworm-sky1-kernel-ubuntu/
 │   ├── board.conf                # carte : cmdline, modules, debug info
 │   ├── inject-sky1-config.sh     # injection de la config Sky1 dans la config Ubuntu
 │   ├── kernels/7.2.11-stable.conf  # track : version, FORCE_BUILTIN/DISABLED, correctifs
+│   ├── distros/                  # versions d'Ubuntu pour l'ISO (26.10, 26.04.1)
 │   ├── sky1/config.sky1-next     # config Sky1 de référence (copie linux-sky1)
 │   ├── udev/                     # USB-C et GPU : pas de veille runtime
 │   ├── systemd/sleep.conf.d/     # veille système bloquée
-│   ├── systemd/system/ cpufreq/  # gouverneur CPU (sky1-cpufreq-tune.service)
+│   ├── systemd/system/ cpufreq/  # gouverneur CPU (sky1-cpufreq-tune.service), kdump (kdump-tools.service.d)
+│   ├── systemd/user/ vlc/        # VLC en sortie ALSA (service utilisateur)
 │   ├── environment.d/            # décodeurs V4L2 hors autoplug GStreamer, GTK sans offload, mutter en GLES
-│   ├── pipewire/ wireplumber/    # audio DP/HDMI
+│   ├── pipewire/ wireplumber/ alsa-card-profile/  # audio DP/HDMI
 │   ├── grub/07_sky1              # entrées GRUB Sky1 (disque détecté par update-grub)
 │   ├── kernel/                   # hook : DTB par noyau dans /boot/dtb
+│   ├── initramfs-tools/          # hook : règles udev dans l'initrd du live (ISO)
 ├── patches/
 │   ├── sky1-7.2/                 # série Sky1 portée sur 7.2 (+ README des décisions)
 │   ├── apply-sky1-patches.sh     # application stricte de la série
@@ -621,7 +786,8 @@ bookworm-sky1-kernel-ubuntu/
 ├── install/install.sh            # installation : paquet de réglages + paquets du noyau
 ├── packaging/build-settings-deb.sh  # paquet bookworm-sky1-settings (tous les réglages système)
 ├── iso/build-iso.sh              # ISO d'installation : ISO Ubuntu officielle + noyau Sky1
-├── diagnostics/check-system.sh   # vérification après boot
+├── diagnostics/                  # check-system.sh (vérification après boot), video-diag.sh, audio-*.sh (son HDMI),
+│                                 # vpu-seek-test.py, reset-watch.py, blackbox.sh
 ├── scripts-addons/               # bookworm-clone.sh (clonage contrôlé), set-locale.sh, usb-rebind-bus10, bookworm-vpu-encode
 ├── tools/portage-sky1/           # outils pour porter la série sur un nouveau noyau
 ├── docs/                         # notes matériel, astuces, guide de clonage
@@ -632,8 +798,10 @@ bookworm-sky1-kernel-ubuntu/
 
 ## 📊 Performances GPU
 
+Avec les réglages actuels (track `7.2.11-stable`, gouverneur réglé), **glmark2-es2-wayland ≈ 2880** en
+HDMI seul (détail dans les deux tableaux suivants). Mesures de départ, avec la config d'Ubuntu d'origine :
 Ubuntu 26.10, noyau 7.2.11-sky1-custom, Mesa 26.2.4 (panfrost GLES 3.1 / panvk Vulkan 1.4),
-session GNOME Wayland (HDMI 4K + DP 1440p), mesuré le 2026-10-16 :
+session GNOME Wayland (HDMI 4K + DP 1440p), le 2026-10-16 :
 
 | Test | Résultat |
 |------|----------|
@@ -697,8 +865,8 @@ Détails : `docs/notes-materiel.md` §14.
 ## Remerciements
 
 Ce projet a été développé en collaboration avec Claude (Anthropic), qui a participé au pipeline, aux
-corrections de patches noyau, aux fixes DTS et pilotes, au portage vers Ubuntu 26.10 et au portage de
-la série Sky1 sur Linux 7.2.
+corrections de patches noyau, aux fixes DTS et pilotes, au portage vers Ubuntu 26.10 et 26.04.1 LTS, au
+portage de la série Sky1 sur Linux 7.2 et aux ISO d'installation.
 
 Un grand merci à l'équipe Sky1-Linux pour son travail de portage vers le noyau mainline !
 
@@ -717,7 +885,7 @@ Les scripts, la configuration et la documentation de ce dépôt sont distribués
 Ce projet fait partie de la chaîne **BOOKWORM** : rendre les technologies open-source complexes
 accessibles à tous.
 
-- 🎬 YouTube : [@kennyTech73]
+- 🎬 YouTube : [@kennyTech73](https://www.youtube.com/@kennyTech73)
 
 ---
 
