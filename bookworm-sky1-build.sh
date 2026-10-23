@@ -6,7 +6,7 @@
 # Usage: ./bookworm-sky1-build.sh [options]
 #
 # Options:
-#   --kernel <track>      Track à compiler, fichier config/kernels/<track>.conf (défaut : 7.2.11-stable)
+#   --kernel <track>      Track à compiler, fichier config/kernels/<track>.conf (défaut : 7.2.12-stable)
 #   --base-config <path>  Config kernel de base (défaut: config du kernel Ubuntu stock le plus récent)
 #   --build-dir <path>    Répertoire de build (défaut: /usr/src/build/sky1-kernel)
 #   --jobs <n>            Nombre de jobs parallèles (défaut: nproc)
@@ -21,7 +21,7 @@
 #
 # Exemple:
 #   ./bookworm-sky1-build.sh --install
-#   ./bookworm-sky1-build.sh --kernel 7.2.11-stable --skip-download --install
+#   ./bookworm-sky1-build.sh --kernel 7.2.12-stable --skip-download --install
 #
 # BOOKWORM — Kenny — OrangePi 6 Plus Sky1 Ubuntu
 # =============================================================================
@@ -48,7 +48,7 @@ die()     { echo -e "${RED}FATAL: $1${NC}" | tee -a "$LOG_FILE"; exit 1; }
 # =============================================================================
 # VALEURS PAR DÉFAUT
 # =============================================================================
-KERNEL_TRACK="7.2.11-stable"
+KERNEL_TRACK="7.2.12-stable"
 BASE_CONFIG=""
 BUILD_DIR="/usr/src/build/sky1-kernel"
 # distcc-env.sh exporte SKY1_JOBS (jobs locaux + distants) ; --jobs reste prioritaire
@@ -198,7 +198,7 @@ step "Étape 1/6 — Sources kernel + Sky1 patches"
 if ! $SKIP_DOWNLOAD; then
 
     # Cloner/mettre à jour linux-sky1 (seulement si le track en a encore besoin :
-    # 7.2.11-stable prend sa série et sa config Sky1 dans ce dépôt)
+    # 7.2.12-stable prend sa série et sa config Sky1 dans ce dépôt)
     if [[ -n "${SKY1_PATCHES_LOCAL:-}" && -n "${SKY1_CONFIG_LOCAL:-}" ]]; then
         ok "Série et config Sky1 locales (${SKY1_PATCHES_LOCAL}, ${SKY1_CONFIG_LOCAL}) : linux-sky1 inutile"
     elif [[ -d "$SKY1_DIR/.git" ]]; then
@@ -238,7 +238,13 @@ fi
 
 $DRY_RUN || [[ -d "$KERNEL_SRC_DIR" ]] || die "Sources kernel introuvables: $KERNEL_SRC_DIR"
 
-cd "$KERNEL_SRC_DIR"
+# En --dry-run, l'extraction n'a pas eu lieu : on reste dans BUILD_DIR
+if [[ -d "$KERNEL_SRC_DIR" ]]; then
+    cd "$KERNEL_SRC_DIR"
+else
+    warn "Dry-run : sources non extraites, étapes suivantes simulées sans arbre"
+    cd "$BUILD_DIR"
+fi
 
 FIXES_DIR="$SCRIPT_DIR/patches/fixes"
 PATCHED_MARK="$KERNEL_SRC_DIR/.sky1-patched"
@@ -470,7 +476,7 @@ if ! $SKIP_BUILD; then
         ok "Kernel: arch/arm64/boot/Image ($(du -h arch/arm64/boot/Image | cut -f1))"
     [[ -f "arch/arm64/boot/dts/cix/${DTB_NAME}" ]] && \
         ok "DTB: arch/arm64/boot/dts/cix/${DTB_NAME}"
-    KVER=$(make -s kernelrelease 2>/dev/null)
+    KVER=$(make -s kernelrelease 2>/dev/null) || true   # pas d'arbre en --dry-run
     for deb in "$BUILD_DIR"/linux-image-"${KVER}"_*.deb "$BUILD_DIR"/linux-headers-"${KVER}"_*.deb; do
         [[ -f "$deb" ]] && ok "Paquet: $deb"
     done

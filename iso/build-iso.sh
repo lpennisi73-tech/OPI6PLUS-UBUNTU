@@ -7,7 +7,7 @@
 # empreinte, étiquette, nom de sortie). L'ISO officielle est téléchargée si absente
 # (liste d'empreintes signée par Ubuntu vérifiée), puis son empreinte est contrôlée.
 # Remasterise l'ISO officielle (non modifiée) :
-#   1. noyau Sky1, paquet bookworm-sky1-settings et firmwares VPU de CIX (cix-vpu-firmware)
+#   1. noyau Sky1 (+ méta-paquet linux-image-sky1), paquet bookworm-sky1-settings et firmwares VPU de CIX (cix-vpu-firmware)
 #      installés dans la couche squashfs
 #      `minimal` (base du système live ET du système installé) ;
 #   2. ces paquets ajoutés à la base dpkg de chaque couche supérieure (chaque
@@ -218,11 +218,13 @@ chmod -R u+w "$WORK/iso"
 echo -e "${GREEN}OK${NC} $(du -sh "$WORK/iso" | cut -f1) extraits"
 
 # =============================================================================
-step "2. Paquets : bookworm-sky1-settings + cix-vpu-firmware + $KPKG"
+step "2. Paquets : bookworm-sky1-settings + cix-vpu-firmware + $KPKG + linux-image-sky1"
 "$PROJECT_DIR/packaging/build-settings-deb.sh" --out "$WORK/debs"
 SETTINGS_DEB=$(ls "$WORK"/debs/bookworm-sky1-settings_*_arm64.deb)
 FW_DEB=$("$PROJECT_DIR/packaging/fetch-cix-firmware.sh")
 cp "$KERNEL_DEB" "$WORK/debs/"
+# Méta-paquet qui suit le dernier noyau : mises à jour du noyau par le dépôt APT BOOKWORM
+META_DEB=$("$PROJECT_DIR/packaging/build-meta-deb.sh" --out "$WORK/debs" "$KERNEL_DEB")
 
 # =============================================================================
 step "3. Couche minimal : installation du noyau Sky1 et des réglages"
@@ -231,11 +233,11 @@ unsquashfs -q -d "$MIN" "$CASPER/minimal.squashfs"
 SIZE_BEFORE=$(du -sb "$MIN" | cut -f1)
 chroot_enter "$MIN"
 mkdir -p "$MIN/tmp/sky1-debs"
-cp "$SETTINGS_DEB" "$FW_DEB" "$KERNEL_DEB" "$MIN/tmp/sky1-debs/"
+cp "$SETTINGS_DEB" "$FW_DEB" "$KERNEL_DEB" "$META_DEB" "$MIN/tmp/sky1-debs/"
 # Réglages d'abord : hook DTB et config dracut servent à l'installation du noyau
 in_chroot "$MIN" dpkg -i --force-confold "/tmp/sky1-debs/$(basename "$SETTINGS_DEB")"
 in_chroot "$MIN" dpkg -i "/tmp/sky1-debs/$(basename "$FW_DEB")"
-in_chroot "$MIN" dpkg -i "/tmp/sky1-debs/$(basename "$KERNEL_DEB")"
+in_chroot "$MIN" dpkg -i "/tmp/sky1-debs/$(basename "$KERNEL_DEB")" "/tmp/sky1-debs/$(basename "$META_DEB")"
 rm -rf "$MIN/tmp/sky1-debs"
 chroot_leave "$MIN"
 # Règles udev Sky1 dans l'initramfs du système installé (sinon course au démarrage sur le port USB-C 0).
@@ -251,7 +253,7 @@ echo -e "${GREEN}OK${NC} noyau, initramfs, DTB et réglages dans minimal (+$(( S
 
 # Entrées dpkg de nos paquets, à reporter dans les couches supérieures
 STATUS_ADD="$WORK/sky1-status.txt"
-python3 - "$MIN/var/lib/dpkg/status" "$STATUS_ADD" "$KPKG" bookworm-sky1-settings cix-vpu-firmware << 'EOF'
+python3 - "$MIN/var/lib/dpkg/status" "$STATUS_ADD" "$KPKG" linux-image-sky1 bookworm-sky1-settings cix-vpu-firmware << 'EOF'
 import sys
 src, out, *names = sys.argv[1:]
 stanzas = open(src, encoding='utf-8').read().strip('\n').split('\n\n')
@@ -378,7 +380,8 @@ for f in "${META[@]}"; do EXTRACT+=(-extract "/$f" "$WORK/iso/$f"); done
 xorriso -osirrox on -indev "$SRC_ISO" "${EXTRACT[@]}" > "$WORK/xorriso-meta.log" 2>&1 \
     || { tail -20 "$WORK/xorriso-meta.log"; die "relecture des métadonnées de l'ISO officielle"; }
 for f in "${META[@]}"; do chmod u+w "$WORK/iso/$f"; done
-python3 - "$WORK/iso" "$SIZE_DELTA" "$KPKG=$KPKG_VERSION" "bookworm-sky1-settings=$SETTINGS_VERSION" \
+python3 - "$WORK/iso" "$SIZE_DELTA" "$KPKG=$KPKG_VERSION" "linux-image-sky1=$KPKG_VERSION" \
+    "bookworm-sky1-settings=$SETTINGS_VERSION" \
     "cix-vpu-firmware=$FW_VERSION" << 'EOF'
 import sys, glob, os, re
 iso, delta = sys.argv[1], int(sys.argv[2])

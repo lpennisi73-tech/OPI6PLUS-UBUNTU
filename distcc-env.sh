@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # distcc-env.sh — Configuration distcc pour BOOKWORM Sky1 Kernel Builder
-# Usage: source distcc-env.sh && ./bookworm-sky1-build.sh --kernel 7.2.11-stable
+# Usage: source distcc-env.sh && ./bookworm-sky1-build.sh --kernel 7.2.12-stable
 #
 # Compilation sur un serveur x86_64 avec un compilateur croisé aarch64 :
 #   serveur : distccd (--allow <réseau local>) + gcc-<même version>-aarch64-linux-gnu
@@ -62,4 +62,4 @@ echo "  Hosts : $DISTCC_HOSTS"
 echo "  Jobs  : $SKY1_JOBS"
 echo ""
 echo "Lance maintenant:"
-echo "  ./bookworm-sky1-build.sh --kernel 7.2.11-stable --skip-download --install"
+echo "  ./bookworm-sky1-build.sh --kernel 7.2.12-stable --skip-download --install"

@@ -4,7 +4,7 @@
 
 ### OrangePi 6 Plus — CIX CD8180 — Ubuntu 26.10 ARM64
 
-[![Kernel](https://img.shields.io/badge/Kernel-7.2.11--sky1-blue)](https://www.kernel.org)
+[![Kernel](https://img.shields.io/badge/Kernel-7.2.12--sky1-blue)](https://www.kernel.org)
 [![GPU](https://img.shields.io/badge/GPU-Mali--G720%20Panthor-green)](https://github.com/visorcraft/orange-pi-6-plus-gpu)
 [![Board](https://img.shields.io/badge/Board-OrangePi%206%20Plus-orange)](http://www.orangepi.org)
 [![OS](https://img.shields.io/badge/OS-Ubuntu%2026.10%20%7C%2026.04.1%20LTS-E95420)](https://ubuntu.com)
@@ -13,7 +13,7 @@
 > This is a translation of the French [README.md](README.md), which is the reference: if the two differ,
 > the French version is right. The project's other documents (`docs/`, script messages) are in French.
 
-> Build and install a complete Linux 7.2.11 kernel for the OrangePi 6 Plus on Ubuntu 26.10:
+> Build and install a complete Linux 7.2.12 kernel for the OrangePi 6 Plus on Ubuntu 26.10:
 > Mali-G720 GPU, dual DP + HDMI displays with sound, 10 Gb/s USB-C, NPU, VPU, 2.6 GHz CPU boost.
 > Born on Gentoo (April 2026), ported to Ubuntu and to Linux 7.2 by BOOKWORM/Kenny in October 2026.
 
@@ -28,7 +28,7 @@ trilin-dptx-cix 141b4000.dp: main link training done! rate:540000 lanes:4
 usb 16-1: new SuperSpeed Plus Gen 2x1 USB device number 2 using xhci-hcd
 ```
 
-| Feature | Status on 7.2.11 |
+| Feature | Status on 7.2.12 |
 |---|---|
 | NVMe boot (PCIe Gen4), devicetree | ✅ |
 | Mali-G720 GPU (panthor 1.8.0, Vulkan, ACE-Lite coherency) | ✅ |
@@ -171,7 +171,7 @@ Without `--install`, the build stops after the packages; installation is then do
 
 | `bookworm-sky1-build.sh` option | Effect |
 |---|---|
-| `--kernel <track>` | track to build, `config/kernels/<track>.conf` (default: `7.2.11-stable`) |
+| `--kernel <track>` | track to build, `config/kernels/<track>.conf` (default: `7.2.12-stable`) |
 | `--install` | runs `install/install.sh` after the build |
 | `--no-dbg` | does not build the `-dbg` package (~16 min and 1.7 GB less; the `vmlinux` with symbols stays in the build tree to decode an Oops). Permanent: `KERNEL_DBG_PKG="no"` in `config/board.conf` |
 | `--jobs <n>` | number of parallel compile jobs (default: number of cores, or `SKY1_JOBS` from distcc-env.sh) |
@@ -185,14 +185,14 @@ Without `--install`, the build stops after the packages; installation is then do
 
 The build shows 6 steps (details below) and logs everything to `logs/build-<date>_<time>.log` (in the
 repository). At the end, it lists the packages produced in `/usr/src/build/sky1-kernel/`:
-`linux-image-7.2.11-sky1-custom_7.2.11-<n>_arm64.deb`, `linux-headers-…`, `linux-image-…-dbg` (unless
+`linux-image-7.2.12-sky1-custom_7.2.12-<n>_arm64.deb`, `linux-headers-…`, `linux-image-…-dbg` (unless
 `--no-dbg`) and `linux-libc-dev` (**do not install it**: it would replace Ubuntu's). The number
 `<n>` increases with each build in the same tree and goes back to 1 in a fresh tree.
 
 ### 5. Install (if the build ran without `--install`)
 
 ```bash
-sudo install/install.sh --kernel 7.2.11-stable
+sudo install/install.sh --kernel 7.2.12-stable
 ```
 
 | `install.sh` option | Effect |
@@ -205,8 +205,8 @@ sudo install/install.sh --kernel 7.2.11-stable
 
 **Before rebooting**, check that the Sky1 entry exists and comes first:
 ```bash
-grep -n "^menuentry" /boot/grub/grub.cfg | head -3     # 1st line: "Sky1 Orange Pi 6 Plus - 7.2.11-sky1-custom (GPU+NPU)"
-ls /boot/vmlinuz-7.2.11-sky1-custom /boot/initrd.img-7.2.11-sky1-custom /boot/dtb/
+grep -n "^menuentry" /boot/grub/grub.cfg | head -3     # 1st line: "Sky1 Orange Pi 6 Plus - 7.2.12-sky1-custom (GPU+NPU)"
+ls /boot/vmlinuz-7.2.12-sky1-custom /boot/initrd.img-7.2.12-sky1-custom /boot/dtb/
 ```
 
 ### 6. Reboot and check
@@ -220,7 +220,7 @@ sent to the `ttyAMA2` serial console (115200 baud).
 
 Once on the desktop:
 ```bash
-uname -r                                # 7.2.11-sky1-custom
+uname -r                                # 7.2.12-sky1-custom
 ./diagnostics/check-system.sh           # GPU, CPU, PCIe/NVMe, temperatures…
 journalctl -k -b -p warning             # kernel warnings
 ```
@@ -233,8 +233,8 @@ first run of install.sh, a **reboot** is needed, logging out is not enough.
 |---|---|
 | The build failed (error fixed since) | `sudo ./bookworm-sky1-build.sh --skip-download --skip-patches --skip-config --install` |
 | Change a config option and rebuild | edit the track or `board.conf`, then `sudo ./bookworm-sky1-build.sh --skip-download --install` |
-| Start from scratch (new patch series, doubtful tree) | `sudo rm -rf /usr/src/build/sky1-kernel/linux-7.2.11` then `sudo ./bookworm-sky1-build.sh --skip-download --install` |
-| Reinstall the same kernel / update the settings only | `sudo install/install.sh --kernel 7.2.11-stable` |
+| Start from scratch (new patch series, doubtful tree) | `sudo rm -rf /usr/src/build/sky1-kernel/linux-7.2.12` then `sudo ./bookworm-sky1-build.sh --skip-download --install` |
+| Reinstall the same kernel / update the settings only | `sudo install/install.sh --kernel 7.2.12-stable` |
 
 Patched sources carry the `.sky1-patched` marker: a re-run never re-applies the patches to an already
 patched tree (they cannot be applied twice); to re-patch, delete the tree.
@@ -242,14 +242,15 @@ patched tree (they cannot be applied twice); to re-patch, delete the tree.
 ### 8. Uninstall
 
 ```bash
-sudo apt remove linux-image-7.2.11-sky1-custom     # the kernel (its DTB and GRUB entry go with it)
-sudo apt remove linux-headers-7.2.11-sky1-custom   # only after a build: not present on a system installed from the ISO
+sudo apt remove linux-image-7.2.12-sky1-custom     # the kernel (its DTB and GRUB entry go with it)
+sudo apt remove linux-headers-7.2.12-sky1-custom   # only after a build: not present on a system installed from the ISO
 sudo apt purge bookworm-sky1-settings              # all Sky1 settings
 ```
-Before removing the last Sky1 kernel, boot the Ubuntu kernel.
+Before removing the last Sky1 kernel, boot the Ubuntu kernel. Removing the latest kernel also removes the
+`linux-image-sky1` meta-package that depends on it (see [staying up to date](#-after-installation-staying-up-to-date)).
 
 ### Under the hood: what the build does (`bookworm-sky1-build.sh`)
-1. downloads `linux-7.2.11.tar.xz` from kernel.org and extracts it;
+1. downloads `linux-7.2.12.tar.xz` from kernel.org and extracts it;
 2. applies the repository's **Sky1 series** (`patches/sky1-7.2/`, 48 patches) in **strict mode** (no fuzz);
 3. applies the **local fixes** `patches/fixes/9xxx-*.patch`;
 4. applies the **DTS / driver fixes** `patches/fixes/*.py` (empty PCIe slot, thermal zones…);
@@ -259,13 +260,15 @@ Before removing the last Sky1 kernel, boot the Ubuntu kernel.
 6. compiles and builds the packages, then runs `install/install.sh` with `--install`.
 
 Patched sources are marked `.sky1-patched`: a re-run does not re-patch. To start from scratch,
-delete `/usr/src/build/sky1-kernel/linux-7.2.11`.
+delete `/usr/src/build/sky1-kernel/linux-7.2.12`.
 
 ### Under the hood: what the installation does (`install/install.sh`)
 1. builds and installs the **`bookworm-sky1-settings`** package
    (`packaging/build-settings-deb.sh`, see below);
 2. installs the kernel packages: the dracut hook generates the initramfs, the settings package hook
    copies the DTB (`/boot/dtb/sky1-orangepi-6-plus-<version>.dtb`) and `update-grub` adds the Sky1 entry;
+   along with them, the **`linux-image-sky1`** meta-package (and `linux-headers-sky1`), built by
+   `packaging/build-meta-deb.sh` in the same folder: it always depends on the latest Sky1 kernel;
 3. VPU firmware: CIX's official `cix-vpu-firmware` package, downloaded once from CIX's repository and
    checked against its hash (`packaging/fetch-cix-firmware.sh`); the Mali GPU firmware comes from
    Ubuntu (`linux-firmware`) and is only checked; ALSA → PipeWire links checked.
@@ -319,7 +322,12 @@ The stock Ubuntu kernel stays installed and keeps its GRUB entry: it is the fall
 
 | Track | Base | Status |
 |-------|------|--------|
-| `7.2.11-stable` | Linux 7.2.11 (kernel.org maintained stable) | ✅ **Default, validated on 16 October 2026** |
+| `7.2.12-stable` | Linux 7.2.12 (kernel.org maintained stable) | ✅ **Default, validated on 23 October 2026** |
+
+kernel.org stable updates are followed: 7.2.12 came out on 21 October 2026, its track was validated on
+23 October (Sky1 series unchanged: no file in common with the 7.2.12 fixes) and published on the BOOKWORM
+APT repository ([staying up to date](#-after-installation-staying-up-to-date)).
+First Ubuntu version: 7.2.11, validated on 16 October 2026.
 
 The [Sky1-Linux/linux-sky1](https://github.com/Sky1-Linux/linux-sky1) project, where the patch series
 comes from, has been inactive since 28 February 2026 (series for Linux 7.0). The series was **ported to
@@ -706,6 +714,16 @@ and runs `apt update`. Updates then arrive along with the others:
 sudo apt update && sudo apt upgrade
 ```
 
+New kernels arrive through the **`linux-image-sky1`** meta-package (like `linux-image-generic` on
+Ubuntu): each kernel's name contains its version (`linux-image-7.2.12-sky1-custom`), so every version is a
+new package, which the meta-package pulls in. The ISO and `install.sh` install it; on a system installed
+before it existed, the `bookworm-sky1-settings` update pulls it in. Use `apt upgrade` (or Software
+Updater), not `apt-get upgrade`, which holds back a new kernel (as with Ubuntu's own kernels).
+
+The new kernel becomes GRUB's default Sky1 entry; the old one stays installed, just below it, as a
+fallback. Once the new one is validated, remove the old one by hand:
+`sudo apt remove linux-image-7.2.11-sky1-custom` (example).
+
 **Remove the repository** (deletes the sources file and the key; packages already installed stay in place):
 
 ```bash
@@ -764,7 +782,7 @@ All options: `./bookworm-sky1-build.sh --help`, `install/install.sh --help`,
 `config/board.conf`: kernel command line (`KERNEL_CMDLINE`, copied to `/etc/default/bookworm-sky1`),
 modules to load, `KERNEL_DEBUG_INFO` (`yes` by default, to decode an Oops; `no` speeds up the build and
 shrinks the packages), `KERNEL_DBG_PKG`.
-The track (`config/kernels/7.2.11-stable.conf`): version, forced options (`FORCE_BUILTIN`,
+The track (`config/kernels/7.2.12-stable.conf`): version, forced options (`FORCE_BUILTIN`,
 `FORCE_DISABLED`, `CONFIG_OVERRIDES`), applied fixes.
 
 ---
@@ -795,7 +813,7 @@ bookworm-sky1-kernel-ubuntu/
 ├── config/
 │   ├── board.conf                # board: cmdline, modules, debug info
 │   ├── inject-sky1-config.sh     # injects the Sky1 config into the Ubuntu config
-│   ├── kernels/7.2.11-stable.conf  # track: version, FORCE_BUILTIN/DISABLED, fixes
+│   ├── kernels/7.2.12-stable.conf  # track: version, FORCE_BUILTIN/DISABLED, fixes
 │   ├── distros/                  # Ubuntu versions for the ISO (26.10, 26.04.1)
 │   ├── sky1/config.sky1-next     # reference Sky1 config (copy of linux-sky1)
 │   ├── udev/                     # USB-C and GPU: no runtime suspend
@@ -815,6 +833,7 @@ bookworm-sky1-kernel-ubuntu/
 ├── dracut/sky1.conf              # initramfs
 ├── install/install.sh            # installation: settings package + kernel packages
 ├── packaging/build-settings-deb.sh  # bookworm-sky1-settings package (all system settings)
+├── packaging/build-meta-deb.sh      # linux-image-sky1 / linux-headers-sky1 meta-packages (latest kernel)
 ├── iso/build-iso.sh              # installation ISO: official Ubuntu ISO + Sky1 kernel
 ├── diagnostics/                  # check-system.sh (post-boot check), video-diag.sh, audio-*.sh (HDMI sound),
 │                                 # vpu-seek-test.py, reset-watch.py, blackbox.sh
@@ -828,8 +847,8 @@ bookworm-sky1-kernel-ubuntu/
 
 ## 📊 GPU performance
 
-With the current settings (track `7.2.11-stable`, tuned governor), **glmark2-es2-wayland ≈ 2880** on
-HDMI only (details in the next two tables). Starting measurements, with Ubuntu's original config:
+With the current settings (track `7.2.12-stable`, tuned governor), **glmark2-es2-wayland ≈ 2880** on
+HDMI only (2916 on 7.2.12) (details in the next two tables). Starting measurements, with Ubuntu's original config:
 Ubuntu 26.10, kernel 7.2.11-sky1-custom, Mesa 26.2.4 (panfrost GLES 3.1 / panvk Vulkan 1.4),
 GNOME Wayland session (HDMI 4K + DP 1440p), on 2026-10-16:
 
@@ -856,7 +875,7 @@ kernel's timer and preemption (1000 Hz, `NO_HZ_FULL`, dynamic "lazy" preemption)
 | + `init_on_alloc=0 hardened_usercopy=off` (at boot) | ~2561 |
 | all Ubuntu hardening off (Gentoo config) | ~2645 |
 
-The `7.2.11-stable` track takes Gentoo's timer and preemption and turns UBSAN off (no cost, a bug
+The `7.2.12-stable` track takes Gentoo's timer and preemption and turns UBSAN off (no cost, a bug
 detection tool). **The other Ubuntu hardening options are kept**: they cost ~5 % in total.
 If you prefer ~2 % more in exchange for a little security, add `init_on_alloc=0 hardened_usercopy=off`
 to the `linux` line of the GRUB entry (`randomize_kstack_offset=off` brings nothing).

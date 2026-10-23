@@ -5,7 +5,8 @@
 #
 # Installe le paquet de réglages bookworm-sky1-settings (packaging/build-settings-deb.sh :
 # entrées GRUB Sky1, DTB par kernel, dracut, udev, cpufreq, audio, session...), puis
-# les paquets .deb produits par `make bindeb-pkg`.
+# les paquets .deb produits par `make bindeb-pkg` et les méta-paquets linux-image-sky1 /
+# linux-headers-sky1 (packaging/build-meta-deb.sh) qui suivent le dernier noyau.
 # Les hooks Ubuntu (/etc/kernel/postinst.d) génèrent l'initramfs (dracut), copient
 # le DTB (hook du paquet de réglages) et lancent update-grub pendant dpkg -i.
 #
@@ -27,7 +28,7 @@ DO_DBG=false
 
 usage() {
     echo "Usage: $0 [options]"
-    echo "  --kernel <track>      Track (ex: 7.2.11-stable) ; defaut: deduit de --kernel-dir"
+    echo "  --kernel <track>      Track (ex: 7.2.12-stable) ; defaut: deduit de --kernel-dir"
     echo "  --kernel-dir <path>   Repertoire build kernel"
     echo "  --deb-dir <path>      Repertoire des .deb (defaut: parent de --kernel-dir)"
     echo "  --with-dbg            Installer aussi linux-image-<kver>-dbg (symboles, crash/kdump)"
@@ -81,7 +82,7 @@ if [[ -z "$KERNEL_TRACK" && -n "$KERNEL_BUILD_DIR" ]]; then
     fi
 fi
 [[ -z "$KERNEL_TRACK" ]] && {
-    echo -e "${RED}ERREUR: track kernel inconnu — preciser --kernel <track> (ex: 7.2.11-stable)${NC}"
+    echo -e "${RED}ERREUR: track kernel inconnu — preciser --kernel <track> (ex: 7.2.12-stable)${NC}"
     echo "  Tracks: $(ls "$PROJECT_DIR/config/kernels/" | sed 's/\.conf$//' | tr '\n' ' ')"
     exit 1
 }
@@ -210,8 +211,11 @@ echo -e "${GREEN}OK${NC} $(basename "$DEB_SETTINGS")"
 # =============================================================================
 echo ""
 echo -e "${YELLOW}--- Etape 2: Installation paquets ---${NC}"
-dpkg -i "$DEB_IMAGE" ${DEB_HEADERS:+"$DEB_HEADERS"} ${DEB_DBG:+"$DEB_DBG"}
-echo -e "${GREEN}OK${NC} Paquets installes"
+# Méta-paquets linux-image-sky1 (+ linux-headers-sky1) : suivent ce noyau, puis les noyaux du
+# dépôt APT BOOKWORM (packaging/build-meta-deb.sh), construits à côté des paquets du noyau
+mapfile -t DEB_META < <("$PROJECT_DIR/packaging/build-meta-deb.sh" "$DEB_IMAGE" ${DEB_HEADERS:+"$DEB_HEADERS"})
+dpkg -i "$DEB_IMAGE" ${DEB_HEADERS:+"$DEB_HEADERS"} ${DEB_DBG:+"$DEB_DBG"} "${DEB_META[@]}"
+echo -e "${GREEN}OK${NC} Paquets installes ($(for d in "${DEB_META[@]}"; do basename "$d"; done | paste -sd' '))"
 
 KERNEL_IMG="/boot/vmlinuz-${KVER}"
 INITRD="/boot/initrd.img-${KVER}"

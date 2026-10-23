@@ -147,7 +147,7 @@ Architecture: arm64
 Maintainer: kennytech73 <contact@bookworm-mon0.org>
 Installed-Size: $SIZE
 Depends: systemd
-Recommends: pipewire-alsa, wireplumber, cix-vpu-firmware
+Recommends: pipewire-alsa, wireplumber, cix-vpu-firmware, linux-image-sky1
 Section: admin
 Priority: optional
 Description: Réglages BOOKWORM Sky1 pour Orange Pi 6 Plus (CIX CD8180)
