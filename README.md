@@ -684,8 +684,39 @@ s'appelait `nvme1n1` à un démarrage, `nvme0n1` au suivant). Pour les repérer 
 
 L'installateur est celui d'Ubuntu. À la fin, le disque contient le noyau Sky1, `bookworm-sky1-settings`
 et le noyau Ubuntu de secours ; GRUB démarre par défaut sur l'entrée Sky1 (créée par `/etc/grub.d/07_sky1`,
-qui trouve le disque tout seul). Ensuite, les mises à jour du noyau se font avec la procédure ci-dessus
-(`bookworm-sky1-build.sh --install`).
+qui trouve le disque tout seul). Pour recevoir ensuite les mises à jour, voir
+[Après l'installation : rester à jour](#-après-linstallation--rester-à-jour).
+
+---
+
+## 🔄 Après l'installation : rester à jour
+
+Le noyau Sky1 et `bookworm-sky1-settings` ne viennent pas des dépôts d'Ubuntu : sans rien faire,
+`apt upgrade` ne les met jamais à jour. Le dépôt APT BOOKWORM les fournit (Ubuntu 26.04 LTS et 26.10, arm64).
+
+**Ajouter le dépôt** (une fois, après l'installation) :
+
+```bash
+curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | sudo bash
+```
+
+Le script vérifie qu'il tourne sur Ubuntu 26.04 ou 26.10 en arm64, télécharge la clé du dépôt et contrôle son
+empreinte (`24783F1C16CA14F42FC5FF4D5575688BDA477913`), puis crée
+`/etc/apt/sources.list.d/bookworm.sources` (clé dans `/usr/share/keyrings/bookworm-archive-keyring.gpg`)
+et lance `apt update`. Les mises à jour arrivent ensuite avec les autres :
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+**Retirer le dépôt** (supprime le fichier sources et la clé ; les paquets déjà installés restent en place) :
+
+```bash
+curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | sudo bash -s -- --remove
+```
+
+Pour lire le script avant de le lancer : `curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | less`.
+Compiler soi-même reste possible (procédure ci-dessus, `bookworm-sky1-build.sh --install`).
 
 ---
 

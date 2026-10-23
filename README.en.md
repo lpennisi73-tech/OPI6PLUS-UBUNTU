@@ -681,8 +681,39 @@ stick written with `dd` to find out whether the problem comes from Ventoy.
 
 The installer is Ubuntu's. At the end, the disk contains the Sky1 kernel, `bookworm-sky1-settings` and
 the fallback Ubuntu kernel; GRUB boots the Sky1 entry by default (created by `/etc/grub.d/07_sky1`, which
-finds the disk by itself). Afterwards, kernel updates are done with the procedure above
-(`bookworm-sky1-build.sh --install`).
+finds the disk by itself). To receive updates afterwards, see
+[After installation: staying up to date](#-after-installation-staying-up-to-date).
+
+---
+
+## 🔄 After installation: staying up to date
+
+The Sky1 kernel and `bookworm-sky1-settings` do not come from Ubuntu's repositories: left as is,
+`apt upgrade` never updates them. The BOOKWORM APT repository provides them (Ubuntu 26.04 LTS and 26.10, arm64).
+
+**Add the repository** (once, after installation):
+
+```bash
+curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | sudo bash
+```
+
+The script checks that it runs on Ubuntu 26.04 or 26.10 on arm64, downloads the repository key and checks its
+fingerprint (`24783F1C16CA14F42FC5FF4D5575688BDA477913`), then creates
+`/etc/apt/sources.list.d/bookworm.sources` (key in `/usr/share/keyrings/bookworm-archive-keyring.gpg`)
+and runs `apt update`. Updates then arrive along with the others:
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+**Remove the repository** (deletes the sources file and the key; packages already installed stay in place):
+
+```bash
+curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | sudo bash -s -- --remove
+```
+
+To read the script before running it: `curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | less`.
+Building it yourself is still possible (procedure above, `bookworm-sky1-build.sh --install`).
 
 ---
 
