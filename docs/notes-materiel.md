@@ -22,6 +22,7 @@ Contrôle : `wpctl status` doit lister les sinks « DisplayPort » et « HDMI »
 Symptôme : après l'extinction de l'écran par GNOME, souris et clavier ne rallument rien ; `Ctrl+Alt+F2` non plus. Pourtant `status=connected`, `enabled`, `dpms On`, et l'état atomique donne crtc `active=1`.
 Cause : au réveil, le moniteur/convertisseur fait Unplugged puis Plugged en ~2,5 s, environ 2 s après le link training. `trilin_dp_handle_disconnect()` éteint le PHY et met `active_stream_cnt = 0`, mais mutter ne voit jamais l'état « déconnecté » (le connecteur est de nouveau connecté quand il relit) et ne refait pas de modeset : le CRTC reste actif sur un lien mort.
 Correctif : `9007-trilin-dp-recover-stale-crtc` — à la fin du travail HPD, si le connecteur a un CRTC actif et `active_stream_cnt == 0`, on appelle `drm_atomic_helper_reset_crtc()` (log : « HPD bounce: CRTC active but link torn down, forcing modeset »). Validé sur 6.18.14-lts, 6.19-latest et 7.0-next (HDMI), y compris sur arbre propre (2 déclenchements du log en ~580 s d'idle, image revenue) ; déclaré dans les 4 pistes (dry-run OK sur 6.19 et 7.0, test réel à faire).
+Effet de bord corrigé le 2026-10-23 : pendant les ~2 s « débranché », gnome-shell relit le connecteur et le cœur DRM efface l'EDID (`drm_probe_helper.c`, `display_info` remis à zéro) ; le modeset forcé partait avant toute relecture → `info_format=0, force support RGB444`, 6 bpc jusqu'au modeset suivant (27 cas sur 27 rebonds dans les journaux). 9007 refait maintenant `fill_modes` (sous `mode_config.mutex`, comme `DRM_IOCTL_MODE_GETCONNECTOR`) quand `display_info.color_formats` est vide (log : « HPD bounce: EDID re-read, bpc=12 »), puis le modeset → 8 bpc. Validé sur 7.2.11 (module de test).
 Contournement sans patch : `echo off | sudo tee /sys/class/drm/card2-HDMI-A-1/status; sleep 3; echo detect | sudo tee /sys/class/drm/card2-HDMI-A-1/status`.
 Diagnostic utile : `sudo dmesg | grep -a -E 'hpd event|encoder_(enable|disable)'` ; un Unplugged/Plugged sans encoder_disable/enable entre les deux est le signe du bug.
 
@@ -312,6 +313,6 @@ précédents (config Ubuntu) : la préemption complète change le minutage. À s
   2 réveils après 15 min, avec et sans vidéo en cours, 2 resets par réveil, `FIFO_READY` = 1 et son revenu
   à chaque fois. Le contournement des sorties toujours ouvertes est gardé (le blocage en cours de
   lecture vu au stress test n'est pas traité par 0048, qui n'agit qu'à la remontée du lien).
-- Défaut voisin, non traité : après le rebond HPD de l'écran, `info_format=0, force support RGB444`
-  → image en 6 bpc au lieu de 8 jusqu'au prochain rebranchement ou démarrage (EDID/couleurs mal lus).
+- Défaut voisin, corrigé le 2026-10-23 dans 9007 (voir §7b) : après le rebond HPD de l'écran,
+  `info_format=0, force support RGB444` → image en 6 bpc au lieu de 8.
 

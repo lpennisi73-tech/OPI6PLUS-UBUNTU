@@ -296,6 +296,27 @@ fi
 exec /usr/sbin/zpool "$@"
 ZPOOL
         chmod 755 "$dir/usr/local/sbin/zpool"
+        # finalrd (couche live seulement) prépare /run/initramfs, où Plymouth bascule en fin
+        # d'extinction : sans les polices, le gras jamais ouvert avant (noms d'unités, [FAILED])
+        # s'affiche en carrés. Hook appelé par finalrd avec « setup » (et par systemd-shutdown
+        # ensuite, sans effet).
+        mkdir -p "$dir/etc/finalrd"
+        cat > "$dir/etc/finalrd/bookworm-sky1-plymouth-fonts.finalrd" << 'FINALRD'
+#!/bin/sh
+# BOOKWORM Sky1 (système live) : polices de Plymouth dans la racine d'extinction de finalrd.
+# En fin d'extinction, Plymouth bascule dans /run/initramfs ; une police jamais ouverte avant
+# (le gras des noms d'unités et de [FAILED]) y serait introuvable et s'afficherait en carrés.
+set -e
+[ "$1" = setup ] || exit 0
+. /usr/share/initramfs-tools/hook-functions
+for q in monospace monospace:bold Ubuntu Ubuntu:bold "Ubuntu Light"; do
+    f=$(fc-match -f '%{file}' "$q" 2>/dev/null) || continue
+    # copy_file renvoie 1 si le fichier est déjà copié (même police pour deux requêtes)
+    [ -f "$f" ] && { copy_file font "$f" || true; }
+done
+exit 0
+FINALRD
+        chmod 755 "$dir/etc/finalrd/bookworm-sky1-plymouth-fonts.finalrd"
     fi
     if [[ -f "$dir/var/lib/dpkg/status" ]]; then
         merge_status "$dir/var/lib/dpkg/status"

@@ -242,8 +242,9 @@ patched tree (they cannot be applied twice); to re-patch, delete the tree.
 ### 8. Uninstall
 
 ```bash
-sudo apt remove linux-image-7.2.11-sky1-custom linux-headers-7.2.11-sky1-custom   # the kernel (its DTB and GRUB entry go with it)
-sudo apt purge bookworm-sky1-settings                                             # all Sky1 settings
+sudo apt remove linux-image-7.2.11-sky1-custom     # the kernel (its DTB and GRUB entry go with it)
+sudo apt remove linux-headers-7.2.11-sky1-custom   # only after a build: not present on a system installed from the ISO
+sudo apt purge bookworm-sky1-settings              # all Sky1 settings
 ```
 Before removing the last Sky1 kernel, boot the Ubuntu kernel.
 
@@ -302,6 +303,7 @@ Where to find the files (full list: `dpkg -L bookworm-sky1-settings`):
 | Modules, dracut | `/usr/lib/modules-load.d/`, `/usr/lib/modprobe.d/`, `/usr/lib/dracut/dracut.conf.d/` (`bookworm-sky1*`) | same name in `/etc/…` |
 | VLC (ALSA output) | `/usr/libexec/bookworm-sky1/sky1-vlc-aout`, user service `bookworm-sky1-vlc-aout` | in VLC (*Preferences → Audio*): your choice is never touched again |
 | kdump (crash kernel) | `/usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf` | `KDUMP_CMDLINE_APPEND` in `/etc/default/kdump-tools` |
+| geoclue (without libproxy) | `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` | same name in `/etc/systemd/system/geoclue.service.d/` |
 | GRUB, cpufreq, DTB | `/etc/grub.d/07_sky1`, `/etc/default/bookworm-sky1`, `/etc/default/sky1-cpufreq`, `/etc/kernel/post*.d/zz-bookworm-sky1-dtb` | these files directly (kept on upgrades) |
 
 `/etc/environment.d/` therefore normally contains no Sky1 settings. To check that they are active:
@@ -358,6 +360,9 @@ git history).
 | Video stutters when opening notifications or the system menu | in desktop OpenGL, gnome-shell uploads its BGRA images as RGBA8 and Mesa converts every pixel on the CPU | gnome-shell on OpenGL ES: `COGL_DRIVER=gles2` (`config/environment.d/90-sky1-mutter-gles.conf`) |
 | Choppy sound in VLC | DP/HDMI outputs at 85 ms per block, Pulse client buffers too small | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC on ALSA output, see below) |
 | 7.0 GRUB entry before the 7.2 one | alphabetical order of `/etc/grub.d` | `/etc/grub.d/07_sky1` sorts Sky1 kernels by version |
+| 6 bits per colour after the display bounces on wake-up (`info_format=0, force support RGB444`) | the modeset forced after the bounce ran before the EDID was read again, while GNOME had cleared it during the 2 s "unplugged" | `9007` re-reads the EDID before the modeset ("HPD bounce: EDID re-read, bpc=…") |
+| `geoclue` failing at boot (`start operation timed out`, 90 s) | deadlock in GIO when geoclue starts: the libproxy module, loaded under the modules lock, waits for an initialisation the main thread cannot finish | "dummy" proxy resolver for geoclue: `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` |
+| `cros-ec-i2c 6-0076: Cannot identify the EC: error -71` at every boot | EC node inherited from the CIX reference board (a laptop: battery, lid, keyboard); no such EC on the Orange Pi 6 Plus | node disabled (`dts-disable-cros-ec.py`) |
 
 Fixes from the Gentoo days, still applied: SError on empty PCIe slot (`pci-sky1-link-down-guard.py`),
 SCMI boost from boot (`9004`), black screen on HDMI wake-up (`9007`), DP/HDMI sound (`9001`, `9009`),
@@ -442,18 +447,15 @@ twice on 21 October 2026 (once during a kernel build, which died with the termin
 run the build outside the session). Cause not found; if it happens, note the time and what you were doing.
 
 ### Other
-- **6 bits per colour after a display reconnect**: when the display disconnects and reconnects by itself
-  (often on wake-up), the driver misreads its capabilities and forces 6 bits per colour
-  (`info_format=0, force support RGB444` in `journalctl -k`): visible banding in gradients, until the
-  next re-plug or reboot.
 - **Temperatures**: the firmware refuses to enable the SCMI sensors (`Error enabling sensor … err=-2`):
   they can be read (`sensors`), but there are no thermal zones and no kernel throttling.
-- **EC** `cros-ec-i2c` (I2C 6-0076): does not answer (`error -71`), no visible effect.
 - Harmless boot noise: SMMU faults of `141d0000.disp-controller` (firmware scanout),
   `sky1_timer … -2`, `SCMI protocol 129 not implemented`, `bpf-restrict-fs` (BTF disabled).
 - **KVM on USB bus 10** (`9290000`): after switching, keyboard and mouse may disappear;
   `sudo scripts-addons/usb-rebind-bus10` resets this controller.
-- The audio DSP firmware (CIX's `cix-audio-dsp` package) is not installed: sound works without it.
+- The audio DSP firmware (CIX's `cix-audio-dsp` package) is not installed: nothing uses it. Sound goes
+  straight through I2S and HDA; the DSP (`remoteproc0`, `cix-dsp-rproc`) does not start by itself and the
+  device tree declares no SOF sound card that would use it.
 - VPU encoding (`scripts-addons/bookworm-vpu-encode`): written for Gentoo's `ffmpeg-sky1`, not yet
   adapted to Ubuntu.
 
@@ -497,8 +499,8 @@ precedence. GNOME's "Test" button does not work with the Pro Audio profile.
   `KDUMP_CMDLINE_APPEND` value set in `/etc/default/kdump-tools` takes precedence.
 - `console=ttyAMA2,115200 console=tty0`: messages on the serial console and on screen; text consoles
   (Ctrl+Alt+F3) available.
-- Uninstall a kernel: `sudo apt remove linux-image-<version> linux-headers-<version>`; its DTB and its
-  GRUB entry go with it.
+- Uninstall a kernel: `sudo apt remove linux-image-<version>` (and `linux-headers-<version>` if it is
+  installed, after a build); its DTB and its GRUB entry go with it.
 
 ---
 
@@ -638,7 +640,7 @@ example in `~/Downloads/`).
    ```
 3. Write the ISO, then flush the buffers:
    ```bash
-   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261022.iso
+   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261023.iso
    sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
    sync
    ```
@@ -767,7 +769,7 @@ bookworm-sky1-kernel-ubuntu/
 │   ├── sky1/config.sky1-next     # reference Sky1 config (copy of linux-sky1)
 │   ├── udev/                     # USB-C and GPU: no runtime suspend
 │   ├── systemd/sleep.conf.d/     # system suspend blocked
-│   ├── systemd/system/ cpufreq/  # CPU governor (sky1-cpufreq-tune.service), kdump (kdump-tools.service.d)
+│   ├── systemd/system/ cpufreq/  # CPU governor (sky1-cpufreq-tune.service), kdump, geoclue (*.service.d)
 │   ├── systemd/user/ vlc/        # VLC on ALSA output (user service)
 │   ├── environment.d/            # V4L2 decoders out of GStreamer autoplug, GTK without offload, mutter on GLES
 │   ├── pipewire/ wireplumber/ alsa-card-profile/  # DP/HDMI audio

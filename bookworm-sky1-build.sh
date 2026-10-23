@@ -442,6 +442,19 @@ if ! $SKIP_BUILD; then
         # la debug info reste dans le vmlinux de l'arbre de build
         DBG_PROFILE=""
         [[ "${KERNEL_DBG_PKG:-yes}" == "no" ]] && DBG_PROFILE="pkg.linux-upstream.nokerneldbg"
+        # Révision du paquet : une de plus que la plus haute déjà construite ou installée.
+        # Le compteur du noyau (.version) vit dans l'arbre : un arbre neuf repartirait à 1,
+        # et dpkg ferait un « downgrade » d'un paquet plus récent par son numéro.
+        KVER=$(make -s kernelrelease 2>/dev/null)
+        PKG_REV=0
+        for v in $(dpkg-query -W -f='${Version}\n' "linux-image-${KVER}" 2>/dev/null) \
+                 $(for f in "$BUILD_DIR"/linux-image-"${KVER}"_*_arm64.deb; do
+                       [[ -f "$f" ]] && dpkg-deb -f "$f" Version; done); do
+            r=${v##*-}
+            [[ "$r" =~ ^[0-9]+$ ]] && (( r > PKG_REV )) && PKG_REV=$r
+        done
+        export KDEB_PKGVERSION="${KERNEL_FULL_VERSION}-$((PKG_REV + 1))"
+        info "Version des paquets : $KDEB_PKGVERSION"
         DEB_BUILD_PROFILES="$DBG_PROFILE" \
             make ARCH=arm64 -j${JOBS} ${CC:+CC="$CC"} ${CXX:+CXX="$CXX"} bindeb-pkg 2>&1 | tee -a "$LOG_FILE"
         BUILD_EXIT=${PIPESTATUS[0]}

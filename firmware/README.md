@@ -7,7 +7,7 @@ auteur, avec sa licence, et s'installe comme un paquet Debian ordinaire.
 |---|---|---|---|---|
 | GPU Mali-G720 `arm/mali/arch12.8/mali_csffw.bin` | panthor | paquet Ubuntu `linux-firmware-misc` | Arm, « Redistributable-mali_csffw » (`/usr/share/doc/linux-firmware-misc/copyright`) | par Ubuntu |
 | VPU `*.fwb` (16 codecs) | amvx (décodage/encodage V4L2) | paquet **`cix-vpu-firmware` 1.0.1-3** de CIX, dépôt APT `https://archive.cixtech.com/debian` (trixie), repris tel quel | déclarée par CIX : copyright Cix Technology 2026, GPL-2+ (`/usr/share/doc/cix-vpu-firmware/copyright`) | install.sh (étape 4) et ISO |
-| DSP audio HiFi5 `dsp_fw.bin` | cix-dsp-rproc | paquet `cix-audio-dsp` 2.0.0 de CIX (même dépôt) | déclarée par CIX : MIT | **non** (le son fonctionne sans) |
+| DSP audio HiFi5 `dsp_fw.bin` | cix-dsp-rproc | paquet `cix-audio-dsp` 2.0.0 de CIX (même dépôt) | déclarée par CIX : MIT | **non** (rien ne s'en sert : DSP jamais démarré, aucune carte SOF dans le DT) |
 
 ## Firmwares du VPU
 

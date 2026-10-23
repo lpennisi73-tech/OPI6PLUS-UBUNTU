@@ -132,6 +132,10 @@ inst 644 "$C/systemd/system/sky1-cpufreq-tune.service" /usr/lib/systemd/system/s
 inst 644 "$C/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf" \
     /usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf
 
+# --- geoclue : sans libproxy (interblocage GIO au démarrage) ---
+inst 644 "$C/systemd/system/geoclue.service.d/90-bookworm-sky1.conf" \
+    /usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf
+
 # --- Métadonnées ---
 mkdir -p "$R/DEBIAN"
 (cd "$R" && find etc -type f | sed 's|^|/|' | sort) > "$R/DEBIAN/conffiles"

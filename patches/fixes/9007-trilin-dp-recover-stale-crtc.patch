@@ -1,6 +1,6 @@
 --- a/drivers/gpu/drm/cix/dptx/trilin_dptx.c
 +++ b/drivers/gpu/drm/cix/dptx/trilin_dptx.c
-@@ -2682,6 +2682,37 @@
+@@ -2693,6 +2693,53 @@
  #define DP_HPD_MAX_TRIES 100
  
  /*hdp event handle plug in and out*/
@@ -11,16 +11,32 @@
 + * active_stream_cnt, but userspace never saw a "disconnected" state and does
 + * not re-commit: the CRTC stays active on a dead link (black screen).
 + * Force a modeset on the active CRTC so that disable/enable re-trains the link.
++ *
++ * If userspace probed the connector while HPD was low, the probe helper has
++ * dropped the EDID and reset display_info (bpc = 0, no color formats); the
++ * forced modeset would then fall back to 6 bpc RGB until the next modeset.
++ * Re-probe the connector first, as DRM_IOCTL_MODE_GETCONNECTOR would.
 + */
 +static void trilin_dp_recover_stale_crtc(struct trilin_dp *dp)
 +{
 +	struct drm_device *drm = dp->drm[0];
++	struct drm_connector *connector = &dp->connector.base;
 +	struct drm_modeset_acquire_ctx ctx;
 +	struct drm_crtc *crtc;
 +	int ret;
 +
 +	if (!drm || !dp->plugin || (dp->state & DP_STATE_SUSPENDED))
 +		return;
++
++	if (!connector->display_info.color_formats) {
++		mutex_lock(&drm->mode_config.mutex);
++		connector->funcs->fill_modes(connector,
++					     drm->mode_config.max_width,
++					     drm->mode_config.max_height);
++		mutex_unlock(&drm->mode_config.mutex);
++		DP_INFO("HPD bounce: EDID re-read, bpc=%u\n",
++			connector->display_info.bpc);
++	}
 +
 +	DRM_MODESET_LOCK_ALL_BEGIN(drm, ctx, 0, ret);
 +
@@ -38,7 +54,7 @@
  static void trilin_dp_hpd_event_work_func(struct work_struct *work)
  {
  	struct trilin_dp *dp;
-@@ -2753,6 +2784,9 @@
+@@ -2764,6 +2811,9 @@
  		dptx_audio_handle_plugged_change(dp_audio, false);
  
  	cix_hdcp_hpd_event_process(&dp->hdcp, dp->plugin);
