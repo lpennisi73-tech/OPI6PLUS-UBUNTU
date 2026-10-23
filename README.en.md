@@ -360,6 +360,7 @@ git history).
 | USB-C port 0 dead at boot (`timeout waiting for xhci_ready`, burst of `arm-scmi … timed out`) | the controller starts in the initramfs and goes to sleep before the udev rule applies | `90-sky1-*.rules` rules in the initramfs too (dracut `install_items`, initramfs-tools hook) |
 | Installer crash report when clicking "Restart" | `zpool export -a` fails: no ZFS module in the Sky1 kernel | `zpool` wrapper in the ISO live system (`/usr/local/sbin/zpool`) |
 | Frozen desktop, session impossible to stop (`Failed to stop MCU`, processes in D state) | GPU runtime suspend fails and panthor deadlocks between suspend and reset | `config/udev/90-sky1-gpu-pm.rules` (GPU kept awake) |
+| GPU lost under load, session restarted without acceleration (`job timeout`, `CSG … update request timedout`) | the GPU drops out when going through the 72 / 216 MHz frequencies added by the firmware (outside the CIX levels) | `config/udev/90-sky1-gpu-pm.rules` (350 MHz minimum) |
 | Display driver contended at boot | Linux 7.2: `komeda` also matches the Sky1 display | `DRM_KOMEDA` disabled |
 | 2nd "Unknown" display in GNOME | the firmware framebuffer (simpledrm) was never removed | patch `0045` (linlon-dp) |
 | Kernel trace when playing a video | missing VPU firmware + driver bug in that case (use after free) | `cix-vpu-firmware` package + patch `0045` |
@@ -447,12 +448,15 @@ before or after). A choice made later in *Tools → Preferences → Audio → Ou
 included, is kept. To make the service run again: delete `~/.local/state/bookworm-sky1/vlc-aout.done`.
 VLC as a snap (`~/snap/vlc/` folder) is not affected: set the output by hand.
 
-### Rare GPU hang
-The GPU (panthor driver) can hang suddenly (`CSG … update request timedout`, `Failed to stop MCU` in
-`journalctl -k`): gnome-shell restarts with software rendering, the session is lost, and only a reboot
-brings the GPU back. Rare since the GPU no longer has runtime suspend (the package's udev rule), but seen
-twice on 21 October 2026 (once during a kernel build, which died with the terminal: hence the advice to
-run the build outside the session). Cause not found; if it happens, note the time and what you were doing.
+### GPU hang: cause found, under observation
+The GPU (panthor driver) could hang suddenly (`job timeout`, `CSG … update request timedout`,
+`Failed to stop MCU` in `journalctl -k`): gnome-shell restarted with software rendering and only a reboot
+brought the GPU back. **Cause found on 23 October 2026**: the firmware adds two frequencies (72 and
+216 MHz) to the levels planned by CIX (350 to 1000 MHz), and the GPU drops out when going through them
+under load. Reproduced on demand (`diagnostics/gpu-dvfs-stress.sh`): hang after 246 frequency changes with
+all levels, none over 10,629 changes from 350 MHz up. Since `bookworm-sky1-settings` 1.1.38, the GPU udev
+rule sets its minimum to 350 MHz (slightly higher idle power). If the hang still comes back, note the time
+and what you were doing.
 
 ### Other
 - **Temperatures**: the firmware refuses to enable the SCMI sensors (`Error enabling sensor … err=-2`):
@@ -836,7 +840,7 @@ bookworm-sky1-kernel-ubuntu/
 ├── packaging/build-meta-deb.sh      # linux-image-sky1 / linux-headers-sky1 meta-packages (latest kernel)
 ├── iso/build-iso.sh              # installation ISO: official Ubuntu ISO + Sky1 kernel
 ├── diagnostics/                  # check-system.sh (post-boot check), video-diag.sh, audio-*.sh (HDMI sound),
-│                                 # vpu-seek-test.py, reset-watch.py, blackbox.sh
+│                                 # gpu-dvfs-stress.sh (GPU hang), vpu-seek-test.py, reset-watch.py, blackbox.sh
 ├── scripts-addons/               # bookworm-clone.sh (checked cloning), set-locale.sh, usb-rebind-bus10, bookworm-vpu-encode
 ├── tools/portage-sky1/           # tools to port the series to a new kernel
 ├── docs/                         # hardware notes, tips, cloning guide (in French)

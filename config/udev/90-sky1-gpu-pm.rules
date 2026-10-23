@@ -6,3 +6,10 @@
 # Constaté sur 7.2.11 (2026-10-16 et 2026-10-17) et sous Gentoo. GPU maintenu éveillé :
 # la fréquence baisse toujours au repos (devfreq), et le bureau est plus fluide.
 ACTION=="add", SUBSYSTEM=="platform", KERNEL=="15000000.gpu", ATTR{power/control}="on"
+
+# Fréquence minimale 350 MHz. Le firmware SCP ajoute 72 et 216 MHz aux niveaux du DT de CIX
+# (350-1000 MHz) ; en passant par ces niveaux sous charge, le GPU décroche (« job timeout »,
+# « CSG update request timedout », puis GPU perdu jusqu'au redémarrage). Reproduit le
+# 2026-10-23 (diagnostics/gpu-dvfs-stress.sh) : 72-1000 MHz → blocage après 246 changements ;
+# 350-1000 MHz → 10 629 changements en 30 min sans blocage.
+ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="15000000.gpu", ATTR{min_freq}="350000000"

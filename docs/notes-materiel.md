@@ -316,3 +316,20 @@ précédents (config Ubuntu) : la préemption complète change le minutage. À s
 - Défaut voisin, corrigé le 2026-10-23 dans 9007 (voir §7b) : après le rebond HPD de l'écran,
   `info_format=0, force support RGB444` → image en 6 bpc au lieu de 8.
 
+
+## 16. GPU perdu sous charge : fréquences 72 / 216 MHz (2026-10-23, 7.2.12)
+Symptôme (depuis Gentoo, §10 ; sous Ubuntu les 16, 17, 21 et 23 octobre) : `job timeout`, puis
+`CSG n update request timedout` (souvent les 8 groupes), `CSG suspend failed`, `Failed to stop MCU`,
+`AS_ACTIVE bit stuck`, `Soft reset timeout` : le GPU entier ne répond plus, gnome-shell repart en rendu
+logiciel jusqu'au redémarrage. Moments variés : rafales de pubs Firefox, compilation, réveil d'écran, vidéo.
+Linux 7.3 n'apporte rien sur panthor à ce sujet (diff 7.2.12 → 7.3 : 169 lignes, sans rapport).
+Fréquence du GPU : réglée par le firmware SCP (domaine SCMI « perf », `opp_dev` du patch 0011).
+Le DT de CIX ne prévoit que 350/600/800/1000 MHz ; le firmware annonce en plus **72 et 216 MHz**
+(tensions invisibles), et `simple_ondemand` y passe la majorité du temps, avec des sauts 72 ↔ 1000 MHz.
+Reproduction (`diagnostics/gpu-dvfs-stress.sh`, glmark2 en charge, fréquence imposée toutes les 150 ms) :
+- `--floor 72` (72/1000/216/800/350/600) : blocage après 246 changements (42 s) ;
+- `--floor 350` (350/1000/600/800), après reboot : 10 629 changements en 30 min, aucun blocage.
+Correctif : `config/udev/90-sky1-gpu-pm.rules` fixe `min_freq` à 350 MHz (devfreq `15000000.gpu`),
+réglages 1.1.38 ; règle aussi dans l'initramfs. Vérifier : `cat /sys/class/devfreq/15000000.gpu/min_freq`
+(350000000). Piste ultérieure : retirer les deux niveaux dans le pilote (patch panthor) plutôt que par udev.
+Les 39 « OoO Delayed Response » SCMI depuis le 16/10 ne coïncident avec aucun blocage (écartés).

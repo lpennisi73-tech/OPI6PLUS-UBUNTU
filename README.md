@@ -359,6 +359,7 @@ l'historique git).
 | Port USB-C 0 mort au démarrage (`timeout waiting for xhci_ready`, rafale de `arm-scmi … timed out`) | le contrôleur démarre dans l'initramfs et passe en veille avant que la règle udev ne s'applique | règles `90-sky1-*.rules` aussi dans l'initramfs (dracut `install_items`, hook initramfs-tools) |
 | Rapport de plantage de l'installateur au clic « Redémarrer » | `zpool export -a` échoue : pas de module ZFS dans le noyau Sky1 | enveloppe `zpool` dans le système live de l'ISO (`/usr/local/sbin/zpool`) |
 | Bureau figé, session impossible à arrêter (`Failed to stop MCU`, processus en état D) | la mise en veille runtime du GPU échoue et panthor s'interbloque entre veille et reset | `config/udev/90-sky1-gpu-pm.rules` (GPU maintenu éveillé) |
+| GPU perdu sous charge, session relancée sans accélération (`job timeout`, `CSG … update request timedout`) | le GPU décroche en passant par les fréquences 72 / 216 MHz ajoutées par le firmware (hors niveaux CIX) | `config/udev/90-sky1-gpu-pm.rules` (minimum 350 MHz) |
 | Pilote d'affichage disputé au boot | Linux 7.2 : `komeda` reconnaît aussi l'affichage Sky1 | `DRM_KOMEDA` désactivé |
 | 2ᵉ écran « Inconnu » dans GNOME | le framebuffer du firmware (simpledrm) n'était jamais retiré | patch `0045` (linlon-dp) |
 | Trace noyau à la lecture vidéo | firmwares VPU absents + bug du pilote sur ce cas (mémoire libérée réutilisée) | paquet `cix-vpu-firmware` + patch `0045` |
@@ -449,13 +450,15 @@ session (service utilisateur `bookworm-sky1-vlc-aout`) : `aout=alsa` est ajouté
 *Outils → Préférences → Audio → Module de sortie*, « Automatique » compris, est gardé. Pour que le service repasse : supprimer `~/.local/state/bookworm-sky1/vlc-aout.done`.
 VLC en snap (dossier `~/snap/vlc/`) n'est pas concerné : régler la sortie à la main.
 
-### Blocage rare du GPU
-Le GPU (pilote panthor) peut se bloquer d'un coup (`CSG … update request timedout`, `Failed to stop MCU`
-dans `journalctl -k`) : gnome-shell redémarre en rendu logiciel, la session est perdue, et seul un
-redémarrage rend le GPU. Devenu rare depuis que le GPU n'a plus de veille runtime (règle udev du paquet),
-mais vu deux fois le 21 octobre 2026 (dont une fois pendant une compilation du noyau, qui est morte avec le
-terminal : d'où le conseil de lancer le build hors de la session). Cause non trouvée ; si ça arrive,
-notez l'heure et ce que vous faisiez.
+### Blocage du GPU : cause trouvée, en observation
+Le GPU (pilote panthor) pouvait se bloquer d'un coup (`job timeout`, `CSG … update request timedout`,
+`Failed to stop MCU` dans `journalctl -k`) : gnome-shell redémarrait en rendu logiciel et seul un
+redémarrage rendait le GPU. **Cause trouvée le 23 octobre 2026** : le firmware ajoute deux fréquences
+(72 et 216 MHz) aux niveaux prévus par CIX (350 à 1000 MHz), et le GPU décroche en passant par elles sous
+charge. Reproduit à la demande (`diagnostics/gpu-dvfs-stress.sh`) : blocage après 246 changements de
+fréquence avec tous les niveaux, aucun sur 10 629 changements à partir de 350 MHz. Depuis
+`bookworm-sky1-settings` 1.1.38, la règle udev du GPU fixe son minimum à 350 MHz (un peu plus de
+consommation au repos). Si le blocage revient malgré tout, notez l'heure et ce que vous faisiez.
 
 ### Autres
 - **Températures** : le firmware refuse d'activer les capteurs SCMI (`Error enabling sensor … err=-2`) :
@@ -840,7 +843,7 @@ bookworm-sky1-kernel-ubuntu/
 ├── packaging/build-meta-deb.sh      # méta-paquets linux-image-sky1 / linux-headers-sky1 (dernier noyau)
 ├── iso/build-iso.sh              # ISO d'installation : ISO Ubuntu officielle + noyau Sky1
 ├── diagnostics/                  # check-system.sh (vérification après boot), video-diag.sh, audio-*.sh (son HDMI),
-│                                 # vpu-seek-test.py, reset-watch.py, blackbox.sh
+│                                 # gpu-dvfs-stress.sh (blocage GPU), vpu-seek-test.py, reset-watch.py, blackbox.sh
 ├── scripts-addons/               # bookworm-clone.sh (clonage contrôlé), set-locale.sh, usb-rebind-bus10, bookworm-vpu-encode
 ├── tools/portage-sky1/           # outils pour porter la série sur un nouveau noyau
 ├── docs/                         # notes matériel, astuces, guide de clonage
