@@ -451,7 +451,10 @@ if ! $SKIP_BUILD; then
         # Révision du paquet : une de plus que la plus haute déjà construite ou installée.
         # Le compteur du noyau (.version) vit dans l'arbre : un arbre neuf repartirait à 1,
         # et dpkg ferait un « downgrade » d'un paquet plus récent par son numéro.
-        KVER=$(make -s kernelrelease 2>/dev/null)
+        # kver lu dans .config : sur un arbre neuf, include/config/auto.conf n'existe pas
+        # encore ici (créé par bindeb-pkg), et « make kernelrelease » donne alors la version
+        # sans LOCALVERSION (aucun paquet trouvé, révision repartie à 1 : vu le 2026-10-24).
+        KVER="$(make -s kernelversion 2>/dev/null)$(sed -n 's/^CONFIG_LOCALVERSION="\(.*\)"$/\1/p' .config)"
         PKG_REV=0
         for v in $(dpkg-query -W -f='${Version}\n' "linux-image-${KVER}" 2>/dev/null) \
                  $(for f in "$BUILD_DIR"/linux-image-"${KVER}"_*_arm64.deb; do

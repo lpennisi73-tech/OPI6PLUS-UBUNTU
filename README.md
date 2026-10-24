@@ -249,7 +249,7 @@ le méta-paquet `linux-image-sky1` qui en dépend (voir [rester à jour](#-aprè
 
 ### Pour comprendre : ce que fait le build (`bookworm-sky1-build.sh`)
 1. télécharge `linux-7.2.12.tar.xz` depuis kernel.org et l'extrait ;
-2. applique la **série Sky1** du dépôt (`patches/sky1-7.2/`, 48 patches) en **mode strict** (aucun fuzz) ;
+2. applique la **série Sky1** du dépôt (`patches/sky1-7.2/`, 49 patches) en **mode strict** (aucun fuzz) ;
 3. applique les **correctifs locaux** `patches/fixes/9xxx-*.patch` ;
 4. applique les **fixes DTS / pilotes** `patches/fixes/*.py` (slot PCIe vide, zones thermiques…) ;
 5. prend la config du noyau Ubuntu `-generic` la plus récente, y injecte la config Sky1
@@ -337,7 +337,8 @@ Linux 7.2** dans ce dépôt (`patches/sky1-7.2/`, décisions patch par patch dan
 - `0045` (BOOKWORM) : écran fantôme, cache firmware du VPU, deux avertissements noyau ;
 - `0046` (BOOKWORM) : VPU bloqué quand un lecteur se déplace dans la vidéo pendant sa mise en route ;
 - `0047` (BOOKWORM) : HDR masqué (son activation plantait le noyau et GNOME) ;
-- `0048` (BOOKWORM) : son HDMI perdu au réveil de l'écran (réinitialisation complète du contrôleur DP).
+- `0048` (BOOKWORM) : son HDMI perdu au réveil de l'écran (réinitialisation complète du contrôleur DP) ;
+- `0049` (BOOKWORM) : GPU bloqué récupéré par sa ligne de reset au lieu d'être perdu jusqu'au redémarrage.
 
 La config Sky1 de référence est copiée dans `config/sky1/` : le build ne dépend plus de linux-sky1.
 Pour porter la série sur une version suivante (7.3…), voir `tools/portage-sky1/README.md`.
@@ -360,6 +361,7 @@ l'historique git).
 | Rapport de plantage de l'installateur au clic « Redémarrer » | `zpool export -a` échoue : pas de module ZFS dans le noyau Sky1 | enveloppe `zpool` dans le système live de l'ISO (`/usr/local/sbin/zpool`) |
 | Bureau figé, session impossible à arrêter (`Failed to stop MCU`, processus en état D) | la mise en veille runtime du GPU échoue et panthor s'interbloque entre veille et reset | `config/udev/90-sky1-gpu-pm.rules` (GPU maintenu éveillé) |
 | GPU perdu sous charge, session relancée sans accélération (`job timeout`, `CSG … update request timedout`) | le GPU décroche en passant par les fréquences 72 / 216 MHz ajoutées par le firmware (hors niveaux CIX) | `config/udev/90-sky1-gpu-pm.rules` (minimum 350 MHz) |
+| Après un blocage du GPU, « Failed to boot MCU after reset, making device unusable » : bureau en rendu logiciel jusqu'au redémarrage | le reset logiciel ne relance pas le microcontrôleur (MCU) du GPU | patch `0049` : reset par la ligne de reset du GPU, puis relance du firmware (`panthor.sky1_hard_reset`, actif par défaut) |
 | Pilote d'affichage disputé au boot | Linux 7.2 : `komeda` reconnaît aussi l'affichage Sky1 | `DRM_KOMEDA` désactivé |
 | 2ᵉ écran « Inconnu » dans GNOME | le framebuffer du firmware (simpledrm) n'était jamais retiré | patch `0045` (linlon-dp) |
 | Trace noyau à la lecture vidéo | firmwares VPU absents + bug du pilote sur ce cas (mémoire libérée réutilisée) | paquet `cix-vpu-firmware` + patch `0045` |
@@ -450,7 +452,7 @@ session (service utilisateur `bookworm-sky1-vlc-aout`) : `aout=alsa` est ajouté
 *Outils → Préférences → Audio → Module de sortie*, « Automatique » compris, est gardé. Pour que le service repasse : supprimer `~/.local/state/bookworm-sky1/vlc-aout.done`.
 VLC en snap (dossier `~/snap/vlc/`) n'est pas concerné : régler la sortie à la main.
 
-### Blocage du GPU : cause trouvée, en observation
+### Blocage du GPU : rare, récupéré sans redémarrer
 Le GPU (pilote panthor) pouvait se bloquer d'un coup (`job timeout`, `CSG … update request timedout`,
 `Failed to stop MCU` dans `journalctl -k`) : gnome-shell redémarrait en rendu logiciel et seul un
 redémarrage rendait le GPU. **Cause trouvée le 23 octobre 2026** : le firmware ajoute deux fréquences
@@ -458,7 +460,14 @@ redémarrage rendait le GPU. **Cause trouvée le 23 octobre 2026** : le firmware
 charge. Reproduit à la demande (`diagnostics/gpu-dvfs-stress.sh`) : blocage après 246 changements de
 fréquence avec tous les niveaux, aucun sur 10 629 changements à partir de 350 MHz. Depuis
 `bookworm-sky1-settings` 1.1.38, la règle udev du GPU fixe son minimum à 350 MHz (un peu plus de
-consommation au repos). Si le blocage revient malgré tout, notez l'heure et ce que vous faisiez.
+consommation au repos).
+
+Un blocage plus rare reste possible sous très forte charge (vu une fois le 24 octobre avec 4 vidéos lues en
+même temps ; non reproduit à la demande). Depuis le noyau **7.2.12-2** (patch 0049), le GPU n'est plus perdu :
+le pilote le réinitialise par sa ligne de reset et relance son firmware (`Sky1: GPU recovered after a reset
+through its reset line` dans `journalctl -k`). gnome-shell ne survit pas à la perte de son contexte
+graphique : la session est relancée (retour à l'écran de connexion, applications ouvertes fermées), mais
+avec l'accélération matérielle, sans redémarrer. Si cela vous arrive, notez l'heure et ce que vous faisiez.
 
 ### Autres
 - **Températures** : le firmware refuse d'activer les capteurs SCMI (`Error enabling sensor … err=-2`) :

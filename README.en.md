@@ -251,7 +251,7 @@ Before removing the last Sky1 kernel, boot the Ubuntu kernel. Removing the lates
 
 ### Under the hood: what the build does (`bookworm-sky1-build.sh`)
 1. downloads `linux-7.2.12.tar.xz` from kernel.org and extracts it;
-2. applies the repository's **Sky1 series** (`patches/sky1-7.2/`, 48 patches) in **strict mode** (no fuzz);
+2. applies the repository's **Sky1 series** (`patches/sky1-7.2/`, 49 patches) in **strict mode** (no fuzz);
 3. applies the **local fixes** `patches/fixes/9xxx-*.patch`;
 4. applies the **DTS / driver fixes** `patches/fixes/*.py` (empty PCIe slot, thermal zones…);
 5. takes the most recent Ubuntu `-generic` kernel config, injects the Sky1 config
@@ -338,7 +338,8 @@ Linux 7.2** in this repository (`patches/sky1-7.2/`, patch-by-patch decisions in
 - `0045` (BOOKWORM): ghost display, VPU firmware cache, two kernel warnings;
 - `0046` (BOOKWORM): VPU stuck when a player seeks in the video while it is starting;
 - `0047` (BOOKWORM): HDR hidden (enabling it crashed the kernel and GNOME);
-- `0048` (BOOKWORM): HDMI sound lost when the display wakes up (full reset of the DP controller).
+- `0048` (BOOKWORM): HDMI sound lost when the display wakes up (full reset of the DP controller);
+- `0049` (BOOKWORM): a hung GPU is recovered through its reset line instead of being lost until reboot.
 
 The reference Sky1 config is copied into `config/sky1/`: the build no longer depends on linux-sky1.
 To port the series to a later version (7.3…), see `tools/portage-sky1/README.md`.
@@ -361,6 +362,7 @@ git history).
 | Installer crash report when clicking "Restart" | `zpool export -a` fails: no ZFS module in the Sky1 kernel | `zpool` wrapper in the ISO live system (`/usr/local/sbin/zpool`) |
 | Frozen desktop, session impossible to stop (`Failed to stop MCU`, processes in D state) | GPU runtime suspend fails and panthor deadlocks between suspend and reset | `config/udev/90-sky1-gpu-pm.rules` (GPU kept awake) |
 | GPU lost under load, session restarted without acceleration (`job timeout`, `CSG … update request timedout`) | the GPU drops out when going through the 72 / 216 MHz frequencies added by the firmware (outside the CIX levels) | `config/udev/90-sky1-gpu-pm.rules` (350 MHz minimum) |
+| After a GPU hang, "Failed to boot MCU after reset, making device unusable": desktop in software rendering until reboot | the soft reset does not restart the GPU microcontroller (MCU) | patch `0049`: reset through the GPU reset line, then firmware restart (`panthor.sky1_hard_reset`, on by default) |
 | Display driver contended at boot | Linux 7.2: `komeda` also matches the Sky1 display | `DRM_KOMEDA` disabled |
 | 2nd "Unknown" display in GNOME | the firmware framebuffer (simpledrm) was never removed | patch `0045` (linlon-dp) |
 | Kernel trace when playing a video | missing VPU firmware + driver bug in that case (use after free) | `cix-vpu-firmware` package + patch `0045` |
@@ -448,15 +450,21 @@ before or after). A choice made later in *Tools → Preferences → Audio → Ou
 included, is kept. To make the service run again: delete `~/.local/state/bookworm-sky1/vlc-aout.done`.
 VLC as a snap (`~/snap/vlc/` folder) is not affected: set the output by hand.
 
-### GPU hang: cause found, under observation
+### GPU hang: rare, recovered without rebooting
 The GPU (panthor driver) could hang suddenly (`job timeout`, `CSG … update request timedout`,
 `Failed to stop MCU` in `journalctl -k`): gnome-shell restarted with software rendering and only a reboot
 brought the GPU back. **Cause found on 23 October 2026**: the firmware adds two frequencies (72 and
 216 MHz) to the levels planned by CIX (350 to 1000 MHz), and the GPU drops out when going through them
 under load. Reproduced on demand (`diagnostics/gpu-dvfs-stress.sh`): hang after 246 frequency changes with
 all levels, none over 10,629 changes from 350 MHz up. Since `bookworm-sky1-settings` 1.1.38, the GPU udev
-rule sets its minimum to 350 MHz (slightly higher idle power). If the hang still comes back, note the time
-and what you were doing.
+rule sets its minimum to 350 MHz (slightly higher idle power).
+
+A rarer hang is still possible under very heavy load (seen once on 24 October with 4 videos played at the
+same time; not reproduced on demand). Since kernel **7.2.12-2** (patch 0049), the GPU is no longer lost:
+the driver resets it through its reset line and restarts its firmware (`Sky1: GPU recovered after a reset
+through its reset line` in `journalctl -k`). gnome-shell does not survive losing its graphics context: the
+session is restarted (back to the login screen, open applications closed), but with hardware
+acceleration, without rebooting. If it happens to you, note the time and what you were doing.
 
 ### Other
 - **Temperatures**: the firmware refuses to enable the SCMI sensors (`Error enabling sensor … err=-2`):

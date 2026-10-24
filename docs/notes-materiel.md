@@ -333,3 +333,16 @@ Correctif : `config/udev/90-sky1-gpu-pm.rules` fixe `min_freq` à 350 MHz (devfr
 réglages 1.1.38 ; règle aussi dans l'initramfs. Vérifier : `cat /sys/class/devfreq/15000000.gpu/min_freq`
 (350000000). Piste ultérieure : retirer les deux niveaux dans le pilote (patch panthor) plutôt que par udev.
 Les 39 « OoO Delayed Response » SCMI depuis le 16/10 ne coïncident avec aucun blocage (écartés).
+
+**Suite (2026-10-24)** : un blocage complet est revenu malgré le plancher (Kingston, 4 vidéos Showtime en
+même temps, GPU à 1000 MHz, températures normales), jusqu'à « Failed to boot MCU after reset, making device
+unusable ». Écartés par essais (`gpu-dvfs-stress.sh`) : 1000 MHz fixe 30 min (`--floor 1000 --ceil 1000`),
+10 glmark2 en parallèle 20 min (`--clients 10 --keep-governor`, rotation des 8 emplacements CSG), 4 vidéos
+Showtime 15 min sur une autre installation : aucun blocage. Cause non trouvée.
+**Patch 0049** : quand le firmware du GPU (MCU) ne redémarre pas après le reset logiciel, panthor fait un
+reset par la ligne de reset du GPU (`gpu_reset`, comme au sondage ; IRQ masquée, requêtes en attente
+abandonnées), remet le bit Q-channel RCSU (0x218), puis relance le firmware (sections rechargées).
+Paramètres : `panthor.sky1_hard_reset` (défaut Y) et `panthor.sky1_hard_reset_test` (essai : prend ce
+chemin à la prochaine remise à zéro, puis revient à N). Validé : `sky1_hard_reset_test=1` + `--floor 72`
+→ « Sky1: GPU recovered after a reset through its reset line » dans la même seconde, glmark2 2862 ensuite.
+gnome-shell plante (contexte GL perdu) et GDM relance la session, avec l'accélération. Noyau 7.2.12-2.
