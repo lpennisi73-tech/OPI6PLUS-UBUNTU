@@ -8,24 +8,28 @@
 #  ╚═════╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝
 #
 #  VPU Hardware Encoder — OrangePi 6 Plus (CIX P1 / ARM Linlon MVE v8)
-#  Version  : 1.0.0
+#  Version  : 2.1.0
 #  Author   : Kenny — BOOKWORM Project
 #  Hardware : CIX Sky1 (CD8180) — ARM Linlon MVE v8 VPU
-#  Kernel   : 7.0.0-gentoo-dist (Sky1 patches + fix-amvx-vb2-lock)
-#  FFmpeg   : ffmpeg-sky1 8.0.1 (Sky1-Linux fork + GCC15 fix)
+#  System   : Ubuntu 26.10 / 26.04.1, BOOKWORM Sky1 kernel (amvx driver)
+#  Backend  : GStreamer (v4l2h264enc, v4l2h265enc, v4l2vp8enc, v4l2vp9enc)
 #
-#  GitHub   :
 #  YouTube  : @Kennytech73
 #
-#  Supported codecs (hardware) :
-#    Encode : H.264, HEVC (H.265), VP8, VP9
-#    Decode : H.264, HEVC, VP8, VP9, AV1, MPEG-2, MPEG-4
+#  Supported codecs (hardware encode) : H.264, HEVC (H.265), VP8, VP9
+#
+#  Why GStreamer and not FFmpeg :
+#    The amvx driver reports NV12 with 2 planes and YU12 with 3 planes
+#    (the V4L2 spec says 1). Stock FFmpeg then copies the whole picture
+#    into plane 0 and the encoder gets no chroma. GStreamer follows the
+#    plane count given by the driver and works with the stock packages.
 #
 #  Requirements :
-#    - ffmpeg-sky1 installed (media-video/ffmpeg-sky1 from localrepo)
-#    - Kernel with fix-amvx-vb2-lock patch applied
-#    - User in 'video' group
-#    - /dev/video1 (MVX encoder device)
+#    - gstreamer1.0-tools, gstreamer1.0-plugins-base-apps (gst-launch, gst-discoverer)
+#    - gstreamer1.0-plugins-good (v4l2 encoders, mp4mux, webmmux)
+#    - gstreamer1.0-plugins-bad (h264parse/h265parse, voaacenc)
+#    - gstreamer1.0-libav (avenc_aac, and the H.264/HEVC software decoders)
+#    - User in 'video' group, /dev/video1 (MVX encoder device)
 # =============================================================================
 
 set -euo pipefail
@@ -34,10 +38,8 @@ set -euo pipefail
 # CONFIGURATION
 # =============================================================================
 
-FFMPEG="${FFMPEG_BIN:-ffmpeg-sky1}"
-FFPROBE="${FFPROBE_BIN:-ffprobe-sky1}"
 VPU_DEVICE="/dev/video1"
-VERSION="1.0.0"
+VERSION="2.1.0"
 
 # Colors — robust detection compatible with Gnome Terminal, sudo, SSH
 # Force color if COLORTERM is set (Gnome Terminal sets this)
@@ -63,10 +65,30 @@ fi
 # Default encoding parameters
 DEFAULT_CODEC="h264"
 DEFAULT_BITRATE="4M"
-DEFAULT_PRESET=""
-DEFAULT_PIXFMT="nv12"
-DEFAULT_AUDIO_CODEC="aac"
-DEFAULT_AUDIO_BITRATE="128k"
+AUDIO_BITRATE="${AUDIO_BITRATE:-}"     # empty = chosen from the channel count
+AUDIO_CODEC="${AUDIO_CODEC:-auto}"     # auto (AAC for mp4, Opus for webm) or none
+
+VPU_DECODE="${VPU_DECODE:-auto}"       # auto (VPU when the codec allows) or no (CPU)
+
+# Seconds without any progress before the VPU decode path is given up
+VPU_DECODE_TIMEOUT=20
+
+# Inside decodebin the V4L2 decoders pick DMABuf output that the encoder
+# refuses (not-negotiated), so decodebin always decodes on the CPU : the VPU
+# decoder is only used in an explicit parsebin chain. GST_PLUGIN_FEATURE_RANK
+# takes no wildcard here.
+DECODE_RANKS="v4l2h264dec:NONE,v4l2h265dec:NONE,v4l2av1dec:NONE,v4l2vp8dec:NONE,v4l2vp9dec:NONE,v4l2mpeg2dec:NONE,v4l2mpeg4dec:NONE,v4l2h263dec:NONE"
+
+# Without frame_level_rate_control_enable=1 the MVX firmware ignores
+# video_bitrate (about 18 Mbit/s whatever is asked). Mode 0 = variable bitrate.
+RATE_CONTROLS="frame_level_rate_control_enable=1,video_bitrate_mode=0"
+
+WORK_DIR=""
+GST_PID=""
+GST_OWNER=""
+INTERRUPTED=0
+IN_BATCH=0
+BATCH_STOP=0
 
 # =============================================================================
 # HELPERS
@@ -92,6 +114,51 @@ die() {
     exit 1
 }
 
+cleanup() {
+    [[ -n "${WORK_DIR}" && -d "${WORK_DIR}" ]] && rm -rf "${WORK_DIR}"
+    return 0
+}
+trap cleanup EXIT
+
+# Ctrl+C : gst-launch runs in its own session (setsid) so the terminal
+# signal does not reach it directly ; the shell that started it forwards
+# one SIGINT, which gst-launch -e turns into an end of stream : the file
+# is closed properly (playable up to the point reached).
+# The signal also reaches the command substitution subshells and, in batch
+# mode, the main shell : they only note it.
+on_interrupt() {
+    if [[ -n "${GST_PID}" && "${BASHPID}" == "${GST_OWNER}" ]]; then
+        if [[ "${INTERRUPTED}" -eq 0 ]] && kill -0 "${GST_PID}" 2>/dev/null; then
+            INTERRUPTED=1
+            printf "\n"
+            log_warn "Interrupted — finishing the file up to the current position..."
+            kill -INT "${GST_PID}" 2>/dev/null || true
+        fi
+    elif [[ "${BASHPID}" == "$$" ]]; then
+        if [[ "${IN_BATCH}" -eq 1 ]]; then
+            BATCH_STOP=1
+        else
+            exit 130
+        fi
+    fi
+}
+trap on_interrupt INT
+
+# "4M", "800k", "4000000" → bits per second
+to_bps() {
+    local v="${1,,}"
+    case "${v}" in
+        *m) awk -v n="${v%m}" 'BEGIN { printf "%d", n * 1000000 }' ;;
+        *k) awk -v n="${v%k}" 'BEGIN { printf "%d", n * 1000 }' ;;
+        *[!0-9]*|"") return 1 ;;
+        *) printf "%d" "${v}" ;;
+    esac
+}
+
+have_element() {
+    gst-inspect-1.0 --exists "$1" 2>/dev/null
+}
+
 # =============================================================================
 # SYSTEM CHECKS
 # =============================================================================
@@ -99,13 +166,14 @@ die() {
 check_requirements() {
     log_step "Checking system requirements..."
 
-    # Check ffmpeg-sky1
-    if ! command -v "${FFMPEG}" &>/dev/null; then
-        die "ffmpeg-sky1 not found. Install media-video/ffmpeg-sky1 from localrepo."
-    fi
-    local ffver
-    ffver=$("${FFMPEG}" -version 2>&1 | head -1 | awk '{print $3}')
-    log_info "FFmpeg : ${ffver}"
+    local tool
+    for tool in gst-launch-1.0 gst-inspect-1.0; do
+        command -v "${tool}" &>/dev/null || \
+            die "${tool} not found. Install it: sudo apt install gstreamer1.0-tools"
+    done
+    command -v gst-discoverer-1.0 &>/dev/null || \
+        die "gst-discoverer-1.0 not found. Install it: sudo apt install gstreamer1.0-plugins-base-apps"
+    log_info "GStreamer : $(gst-launch-1.0 --version | awk 'NR==2 {print $2}')"
 
     # Check VPU device
     if [[ ! -e "${VPU_DEVICE}" ]]; then
@@ -116,18 +184,26 @@ check_requirements() {
     # Check permissions
     if [[ ! -r "${VPU_DEVICE}" ]] || [[ ! -w "${VPU_DEVICE}" ]]; then
         log_warn "No access to ${VPU_DEVICE}."
-        log_warn "Add your user to the 'video' group: usermod -aG video \$USER"
+        log_warn "Add your user to the 'video' group: sudo usermod -aG video \$USER"
         die "Permission denied on ${VPU_DEVICE}"
     fi
     log_info "VPU access : OK ✓"
 
     # Check kernel module — use multiple methods for robustness
-    if ! lsmod | grep -q "amvx" && \
-       ! grep -q "^amvx " /proc/modules 2>/dev/null && \
+    if ! grep -q "^amvx " /proc/modules 2>/dev/null && \
        ! [[ -d /sys/module/amvx ]]; then
-        die "amvx kernel module not loaded. Run: modprobe amvx"
+        die "amvx kernel module not loaded. Run: sudo modprobe amvx"
     fi
     log_info "Kernel module : amvx ✓"
+
+    # Hardware encoders (gstreamer1.0-plugins-good, video4linux2 plugin)
+    local enc found=()
+    for enc in v4l2h264enc v4l2h265enc v4l2vp8enc v4l2vp9enc; do
+        have_element "${enc}" && found+=("${enc}")
+    done
+    [[ ${#found[@]} -gt 0 ]] || \
+        die "No V4L2 hardware encoder in GStreamer. Install: sudo apt install gstreamer1.0-plugins-good"
+    log_info "Encoders : ${found[*]} ✓"
 
     echo ""
 }
@@ -136,21 +212,21 @@ check_requirements() {
 # CODEC SELECTION
 # =============================================================================
 
-# Map codec name to v4l2m2m encoder and file extension
+# Map codec name to "encoder parser muxer extension name"
 get_codec_info() {
     local codec="$1"
     case "${codec,,}" in
         h264|avc)
-            echo "h264_v4l2m2m mp4 H.264/AVC"
+            echo "v4l2h264enc h264parse mp4mux mp4 H.264/AVC"
             ;;
         hevc|h265)
-            echo "hevc_v4l2m2m mp4 HEVC/H.265"
+            echo "v4l2h265enc h265parse mp4mux mp4 HEVC/H.265"
             ;;
         vp8)
-            echo "vp8_v4l2m2m webm VP8"
+            echo "v4l2vp8enc identity webmmux webm VP8"
             ;;
         vp9)
-            echo "vp9_v4l2m2m webm VP9"
+            echo "v4l2vp9enc identity webmmux webm VP9"
             ;;
         *)
             die "Unsupported codec '${codec}'. Supported: h264, hevc, vp8, vp9"
@@ -158,169 +234,335 @@ get_codec_info() {
     esac
 }
 
+# Caps forced after the encoder (H.264: High profile instead of the
+# Constrained Baseline negotiated by default)
+get_codec_caps() {
+    case "$1" in
+        v4l2h264enc) echo "video/x-h264,profile=high" ;;
+        *)           echo "" ;;
+    esac
+}
+
+# Audio encoder for a container : "element bitrate-property-unit"
+# avenc_aac (gstreamer1.0-libav) first, voaacenc (plugins-bad) otherwise
+get_audio_encoder() {
+    local muxer="$1" bitrate_bps="$2"
+    case "${muxer}" in
+        webmmux)
+            have_element opusenc || return 1
+            echo "opusenc bitrate=${bitrate_bps}"
+            ;;
+        *)
+            if have_element avenc_aac; then
+                echo "avenc_aac bitrate=${bitrate_bps}"
+            elif have_element voaacenc; then
+                echo "voaacenc bitrate=${bitrate_bps}"
+            else
+                return 1
+            fi
+            ;;
+    esac
+}
+
+# =============================================================================
+# INPUT ANALYSIS (gst-discoverer-1.0)
+# =============================================================================
+
+# Sets PROBE_DURATION (seconds, may be empty), PROBE_HAS_VIDEO,
+# PROBE_AUDIO_STREAMS, PROBE_CHANNELS (first audio stream) and the parsed
+# caps of the first video and audio streams (PROBE_VIDEO_CAPS, PROBE_AUDIO_CAPS)
+probe_input() {
+    local input="$1" out
+    out=$(LC_ALL=C gst-discoverer-1.0 -v "${input}" 2>/dev/null) || \
+        die "Cannot read ${input} (unknown format or missing GStreamer plugin)"
+
+    PROBE_DURATION=$(awk '/^ *Duration:/ {
+        split($2, t, ":"); printf "%.2f", t[1]*3600 + t[2]*60 + t[3]; exit }' <<< "${out}")
+    PROBE_HAS_VIDEO=$(grep -cE '^ *video #' <<< "${out}" || true)
+    PROBE_AUDIO_STREAMS=$(grep -cE '^ *audio #' <<< "${out}" || true)
+    PROBE_CHANNELS=$(awk '/^ *audio #/ { a = 1 }
+        a && /^ *Channels:/ { print $2; exit }' <<< "${out}")
+    PROBE_VIDEO_CAPS=$(sed -n 's/^ *video #[0-9]*: //p' <<< "${out}" | head -1)
+    PROBE_AUDIO_CAPS=$(sed -n 's/^ *audio #[0-9]*: //p' <<< "${out}" | head -1)
+}
+
+# Prints "decoder parser" for a VPU decode of the probed video, or nothing.
+# Only 8-bit 4:2:0 streams : the encoder takes NV12.
+get_vpu_decoder() {
+    local caps="${PROBE_VIDEO_CAPS}" dec parser
+    [[ "${VPU_DECODE}" != "no" ]] || return 0
+    case "${caps%%,*}" in
+        video/x-h264) dec="v4l2h264dec"; parser="h264parse" ;;
+        video/x-h265) dec="v4l2h265dec"; parser="h265parse" ;;
+        video/x-vp8)  dec="v4l2vp8dec";  parser="" ;;
+        video/x-vp9)  dec="v4l2vp9dec";  parser="vp9parse" ;;
+        video/x-av1)  dec="v4l2av1dec";  parser="av1parse" ;;
+        *) return 0 ;;
+    esac
+    [[ "${caps}" != *"bit-depth-luma=(uint)"* || "${caps}" == *"bit-depth-luma=(uint)8,"* \
+        || "${caps}" == *"bit-depth-luma=(uint)8" ]] || return 0
+    [[ "${caps}" != *"chroma-format="* || "${caps}" == *"chroma-format=(string)4:2:0"* ]] || return 0
+    have_element "${dec}" || return 0
+    if [[ -n "${parser}" ]] && ! have_element "${parser}"; then
+        parser=""
+    fi
+    echo "${dec} ${parser}"
+}
+
+# Caps filter selecting the first audio stream out of parsebin
+# ("audio/x-ac3", "audio/mpeg,mpegversion=4"…)
+get_audio_filter() {
+    local caps="${PROBE_AUDIO_CAPS}" mime version
+    mime="${caps%%,*}"
+    [[ "${mime}" == audio/* ]] || return 1
+    version=$(grep -oE 'mpegversion=\(int\)[0-9]+' <<< "${caps}" | head -1 | sed 's/(int)//')
+    if [[ -n "${version}" ]]; then
+        echo "${mime},${version}"
+    else
+        echo "${mime}"
+    fi
+}
+
 # =============================================================================
 # ENCODING FUNCTIONS
 # =============================================================================
 
-encode_single() {
-    local input="$1"
-    local output="$2"
-    local codec="${3:-${DEFAULT_CODEC}}"
-    local bitrate="${4:-${DEFAULT_BITRATE}}"
-    local extra_opts="${5:-}"
+# Fills PIPELINE. Video :
+#   CPU : decodebin → videoconvert → NV12 (the format the VPU takes)
+#   VPU : parsebin → parser → V4L2 decoder → NV12 in system memory
+#   → progressreport → V4L2 encoder (VPU) → parser → muxer
+# Audio : first stream → audioconvert/resample → AAC or Opus → muxer.
+# The audio queue holds 5 s : the VPU decoder keeps many frames before
+# the first one comes out, and the muxer waits for both streams.
+build_pipeline() {
+    local input="$1" output="$2" encoder="$3" caps="$4" parser="$5" muxer="$6"
+    local video_bps="$7" audio_tail="$8" vpu_dec="${9:-}" vpu_parser="${10:-}"
+    local audio_filter="${11:-}"
+    local big_queue="queue max-size-buffers=0 max-size-bytes=0 max-size-time=5000000000"
 
-    [[ -f "${input}" ]] || die "Input file not found: ${input}"
-
-    local codec_info
-    codec_info=$(get_codec_info "${codec}")
-    local encoder ext codec_name
-    read -r encoder ext codec_name <<< "${codec_info}"
-
-    # Auto-add extension if output has none
-    if [[ "${output}" != *"."* ]]; then
-        output="${output}.${ext}"
+    if [[ -n "${vpu_dec}" ]]; then
+        PIPELINE=( filesrc location="${input}" ! parsebin name=d
+            d. ! "${PROBE_VIDEO_CAPS%%,*}" ! queue )
+        if [[ -n "${vpu_parser}" ]]; then
+            PIPELINE+=( ! "${vpu_parser}" )
+        fi
+        PIPELINE+=( ! "${vpu_dec}" ! video/x-raw,format=NV12 )
+    else
+        PIPELINE=( filesrc location="${input}" ! decodebin name=d
+            d. ! queue ! videoconvert ! video/x-raw,format=NV12 )
     fi
-
-    log_step "Encoding: ${input}"
-    log_info "Codec   : ${codec_name} (${encoder})"
-    log_info "Bitrate : ${bitrate}"
-    log_info "Output  : ${output}"
-    echo ""
-
-    # Get input info — duration and audio channels
-    local duration
-    duration=$("${FFPROBE}" -v quiet -show_entries format=duration \
-        -of default=noprint_wrappers=1:nokey=1 "${input}" 2>/dev/null || echo "?")
-    if [[ "${duration}" != "?" ]]; then
-        printf "  Duration : %.2f seconds\n" "${duration}"
+    PIPELINE+=( ! progressreport update-freq=1
+        ! "${encoder}" extra-controls="encode,${RATE_CONTROLS},video_bitrate=${video_bps}" )
+    if [[ -n "${caps}" ]]; then
+        PIPELINE+=( ! "${caps}" )
     fi
+    PIPELINE+=( ! "${parser}" ! queue ! "${muxer}" name=m ! filesink location="${output}" )
+    if [[ -n "${audio_tail}" ]]; then
+        # shellcheck disable=SC2206 # the audio branch is split on purpose
+        if [[ -n "${vpu_dec}" ]]; then
+            PIPELINE+=( d. ! "${audio_filter}" ! ${big_queue} ! decodebin ! ${audio_tail} )
+        else
+            PIPELINE+=( d. ! ${big_queue} ! ${audio_tail} )
+        fi
+    fi
+}
 
-    # Detect audio channels and adapt bitrate accordingly
-    # 128k is fine for stereo but catastrophic for 5.1 (~21k/channel)
-    local channels audio_bitrate
-    channels=$("${FFPROBE}" -v quiet \
-        -show_entries stream=channels \
-        -select_streams a:0 \
-        -of default=noprint_wrappers=1:nokey=1 \
-        "${input}" 2>/dev/null | head -1)
-    case "${channels}" in
-        1) audio_bitrate="96k"  ;;  # mono
-        2) audio_bitrate="128k" ;;  # stereo
-        6) audio_bitrate="384k" ;;  # 5.1 — 64k/channel minimum
-        8) audio_bitrate="512k" ;;  # 7.1 — 64k/channel minimum
-        *) audio_bitrate="${DEFAULT_AUDIO_BITRATE}" ;;
-    esac
-    log_info "Audio   : ${channels:-?}ch → ${audio_bitrate}"
-
+# Runs PIPELINE with a progress display. Sets GST_RET (exit code) and
+# GST_STALLED (1 when nothing came out within <timeout> seconds ; 0 = no limit)
+run_pipeline() {
+    local log_file="$1" timeout="$2"
     local start_time
     start_time=$(date +%s%N)
+    GST_RET=0
+    GST_STALLED=0
 
-    # Progress file — FFmpeg writes stats here, we read them separately
-    local progress_file
-    progress_file=$(mktemp /tmp/bookworm_progress_XXXXXX)
+    LC_ALL=C GST_PLUGIN_FEATURE_RANK="${DECODE_RANKS}" \
+        setsid gst-launch-1.0 -e "${PIPELINE[@]}" > "${log_file}" 2>&1 < /dev/null &
+    GST_PID=$!
+    GST_OWNER="${BASHPID}"
 
-    # Build FFmpeg command
-    # NOTE: -vf format=nv12 is REQUIRED for the CIX Sky1 VPU
-    # The MVX driver requires YUV input (NV12), not RGB
-    #
-    # Audio sync fixes for V4L2 M2M hardware encoder :
-    #   -vsync cfr          : force constant framerate — prevents PTS drift
-    #                         when the VPU returns frames out of order
-    #   -af aresample=async=1000 : resample audio to stay in sync with video
-    #                         (1000 = max samples/sec compensation)
-    #   -max_muxing_queue_size 1024 : prevents muxer stalls when video is
-    #                         faster than audio (common with HW encoders)
-    "${FFMPEG}" \
-        -i "${input}" \
-        -vf "format=${DEFAULT_PIXFMT}" \
-        -c:v "${encoder}" \
-        -b:v "${bitrate}" \
-        -vsync cfr \
-        -c:a "${DEFAULT_AUDIO_CODEC}" \
-        -b:a "${audio_bitrate}" \
-        -af "aresample=async=1000" \
-        -max_muxing_queue_size 1024 \
-        ${extra_opts} \
-        -progress "${progress_file}" \
-        -nostats \
-        -y "${output}" \
-        2>/tmp/bookworm_ffmpeg_err.log &
+    # Ctrl+C also kills the short commands of the loop below (sleep, grep,
+    # awk) : no errexit until gst-launch has finished
+    set +e
 
-    local ffmpeg_pid=$!
-
-    # Progress display loop — reads from -progress file
-    # FFmpeg writes key=value pairs : frame=, fps=, speed=, out_time=, etc.
-    local frame=0 fps=0 speed=0 out_time="00:00:00"
-    local total_frames=0
-    if [[ "${duration}" != "?" ]]; then
-        # Estimate total frames from duration and input framerate
-        local fps_in
-        fps_in=$("${FFPROBE}" -v quiet -show_entries stream=r_frame_rate \
-            -select_streams v:0 \
-            -of default=noprint_wrappers=1:nokey=1 \
-            "${input}" 2>/dev/null | head -1)
-        # fps_in is often "30000/1001" format — evaluate it
-        total_frames=$(echo "${fps_in:-30/1} ${duration}" | \
-            awk '{split($1,a,"/"); fps=a[1]/a[2]; printf "%d", fps*$2}')
-    fi
-
+    # Progress display loop — reads the progressreport lines :
+    # "progressreport0 (00:00:05): 9 / 20 seconds (45.0 %)"
     printf "\n"
-    while kill -0 "${ffmpeg_pid}" 2>/dev/null; do
-        if [[ -f "${progress_file}" ]]; then
-            frame=$(grep   "^frame="    "${progress_file}" 2>/dev/null | tail -1 | cut -d= -f2 || echo 0)
-            fps=$(grep     "^fps="      "${progress_file}" 2>/dev/null | tail -1 | cut -d= -f2 || echo 0)
-            speed=$(grep   "^speed="    "${progress_file}" 2>/dev/null | tail -1 | cut -d= -f2 || echo "0x")
-            out_time=$(grep "^out_time=" "${progress_file}" 2>/dev/null | tail -1 | cut -d= -f2 || echo "00:00:00")
-            out_time="${out_time%%.*}" # remove microseconds
+    local pos=0 total=0 pct=0 elapsed speed line
+    while kill -0 "${GST_PID}" 2>/dev/null; do
+        line=$(grep '^progressreport' "${log_file}" 2>/dev/null | tail -1 || true)
+        elapsed=$(( ($(date +%s%N) - start_time) / 1000000 ))
+        if [[ -z "${line}" ]]; then
+            if [[ "${timeout}" -gt 0 && "${elapsed}" -gt $(( timeout * 1000 )) \
+                    && "${INTERRUPTED}" -eq 0 ]]; then
+                GST_STALLED=1
+                kill -KILL "${GST_PID}" 2>/dev/null
+            fi
+        else
+            read -r pos total pct < <(awk '{
+                for (i = 1; i <= NF; i++) if ($i == "/") { print $(i-1), $(i+1) }
+            }' <<< "${line}" | awk '{ printf "%d %d %d\n", $1, $2, ($2 > 0 ? $1 * 100 / $2 : 0) }')
+            speed=$(awk -v p="${pos}" -v e="${elapsed}" 'BEGIN { printf "%.1f", (e > 0 ? p * 1000 / e : 0) }')
 
-            # Build progress bar if we know total frames
-            local bar=""
-            if [[ "${total_frames}" -gt 0 ]] 2>/dev/null; then
-                local pct=$(( frame * 100 / total_frames ))
-                local filled=$(( pct * 30 / 100 ))
-                local empty=$(( 30 - filled ))
-                bar=$(printf "[%${filled}s%${empty}s] %3d%%" | \
-                    tr ' ' '█' | sed 's/█\( *\)$/\1/')
-                # Simpler approach
+            local bar="" filled empty i
+            if [[ "${total}" -gt 0 ]]; then
+                filled=$(( pct * 30 / 100 ))
+                empty=$(( 30 - filled ))
                 bar="["
                 for ((i=0; i<filled; i++)); do bar+="█"; done
                 for ((i=0; i<empty; i++));  do bar+="░"; done
                 bar+="] ${pct}%"
             fi
 
-            printf "\r  %b%s%b  frame=%-6s fps=%-6s speed=%-6s time=%s  " \
+            printf "\r  %b%s%b  time=%02d:%02d:%02d  speed=%sx  " \
                 "${CYAN}" "${bar}" "${NC}" \
-                "${frame}" "${fps}" "${speed}" "${out_time}"
+                $(( pos / 3600 )) $(( pos % 3600 / 60 )) $(( pos % 60 )) "${speed}"
         fi
         sleep 0.5
     done
 
-    # Wait for FFmpeg to finish and get its exit code
-    wait "${ffmpeg_pid}"
-    local ffmpeg_ret=$?
-
+    # Wait for gst-launch to finish and get its exit code
+    wait "${GST_PID}" || GST_RET=$?
+    # A Ctrl+C interrupts the first wait : wait again for the end of stream
+    while kill -0 "${GST_PID}" 2>/dev/null; do
+        wait "${GST_PID}" || GST_RET=$?
+    done
+    GST_PID=""
+    set -e
     printf "\n"
-    rm -f "${progress_file}"
+}
+
+encode_single() {
+    local input="$1"
+    local output="$2"
+    local codec="${3:-${DEFAULT_CODEC}}"
+    local bitrate="${4:-${DEFAULT_BITRATE}}"
+
+    # A ( ) subshell (batch mode) resets the traps : set it again here
+    trap on_interrupt INT
+
+    [[ -f "${input}" ]] || die "Input file not found: ${input}"
+
+    local codec_info
+    codec_info=$(get_codec_info "${codec}")
+    local encoder parser muxer ext codec_name
+    read -r encoder parser muxer ext codec_name <<< "${codec_info}"
+    have_element "${encoder}" || die "${encoder} not available in GStreamer"
+
+    local video_bps
+    video_bps=$(to_bps "${bitrate}") || die "Invalid bitrate '${bitrate}' (examples: 4M, 800k)"
+
+    # Auto-add extension if output has none
+    if [[ "$(basename "${output}")" != *"."* ]]; then
+        output="${output}.${ext}"
+    fi
+    [[ "$(readlink -f "${output}")" != "$(readlink -f "${input}")" ]] || \
+        die "Output must be different from the input"
+
+    log_step "Encoding: ${input}"
+    log_info "Codec   : ${codec_name} (${encoder}, VPU)"
+    log_info "Bitrate : ${bitrate}"
+    log_info "Output  : ${output}"
+
+    probe_input "${input}"
+    [[ "${PROBE_HAS_VIDEO}" -gt 0 ]] || die "No video stream in ${input}"
+    if [[ -n "${PROBE_DURATION}" ]]; then
+        printf "  Duration : %s seconds\n" "${PROBE_DURATION}"
+    fi
+
+    # Audio : first audio stream only, re-encoded.
+    # 128k is fine for stereo but catastrophic for 5.1 (~21k/channel)
+    local audio_tail="" audio_bitrate="" audio_enc=""
+    if [[ "${AUDIO_CODEC}" != "none" && "${PROBE_AUDIO_STREAMS}" -gt 0 ]]; then
+        if [[ -n "${AUDIO_BITRATE}" ]]; then
+            audio_bitrate="${AUDIO_BITRATE}"
+        else
+            case "${PROBE_CHANNELS}" in
+                1) audio_bitrate="96k"  ;;  # mono
+                2) audio_bitrate="128k" ;;  # stereo
+                6) audio_bitrate="384k" ;;  # 5.1 — 64k/channel minimum
+                8) audio_bitrate="512k" ;;  # 7.1 — 64k/channel minimum
+                *) audio_bitrate="128k" ;;
+            esac
+        fi
+        local audio_bps
+        audio_bps=$(to_bps "${audio_bitrate}") || die "Invalid AUDIO_BITRATE '${audio_bitrate}'"
+        audio_enc=$(get_audio_encoder "${muxer}" "${audio_bps}") || \
+            die "No audio encoder for ${ext}. Install gstreamer1.0-libav (AAC) or gstreamer1.0-plugins-base (Opus), or set AUDIO_CODEC=none"
+        audio_tail="audioconvert ! audioresample ! ${audio_enc} ! queue ! m."
+        log_info "Audio   : ${PROBE_CHANNELS:-?}ch → ${audio_enc%% *} ${audio_bitrate}"
+        if [[ "${PROBE_AUDIO_STREAMS}" -gt 1 ]]; then
+            log_info "          (first of ${PROBE_AUDIO_STREAMS} audio streams kept)"
+        fi
+    else
+        log_info "Audio   : none"
+    fi
+
+    # Decode on the VPU when the codec allows it (about 3x faster than the
+    # CPU on a 1080p film), with the CPU as a fallback
+    local vpu_dec="" vpu_parser="" audio_filter=""
+    read -r vpu_dec vpu_parser <<< "$(get_vpu_decoder)"
+    if [[ -n "${vpu_dec}" && -n "${audio_tail}" ]]; then
+        audio_filter=$(get_audio_filter) || vpu_dec=""
+    fi
+    if [[ -n "${vpu_dec}" ]]; then
+        log_info "Decode  : VPU (${vpu_dec})"
+    else
+        log_info "Decode  : CPU"
+    fi
+    echo ""
+
+    local caps
+    caps=$(get_codec_caps "${encoder}")
+
+    WORK_DIR=$(mktemp -d)
+    local log_file="${WORK_DIR}/gst.log"
+    local start_time
+    start_time=$(date +%s%N)
+
+    local gst_ret
+    if [[ -n "${vpu_dec}" ]]; then
+        build_pipeline "${input}" "${output}" "${encoder}" "${caps}" "${parser}" "${muxer}" \
+            "${video_bps}" "${audio_tail}" "${vpu_dec}" "${vpu_parser}" "${audio_filter}"
+        run_pipeline "${log_file}" "${VPU_DECODE_TIMEOUT}"
+        gst_ret=${GST_RET}
+        # Nothing encoded : start again with the CPU decoder
+        if [[ "${INTERRUPTED}" -eq 0 ]] && { [[ "${GST_STALLED}" -eq 1 ]] || \
+                { [[ ${gst_ret} -ne 0 ]] && ! grep -q '^progressreport' "${log_file}"; }; }; then
+            log_warn "VPU decode did not start — decoding on the CPU instead"
+            rm -f "${output}"
+            log_file="${WORK_DIR}/gst-cpu.log"
+            start_time=$(date +%s%N)
+            vpu_dec=""
+        fi
+    fi
+    if [[ -z "${vpu_dec}" ]]; then
+        build_pipeline "${input}" "${output}" "${encoder}" "${caps}" "${parser}" "${muxer}" \
+            "${video_bps}" "${audio_tail}"
+        run_pipeline "${log_file}" 0
+        gst_ret=${GST_RET}
+    fi
+
+    if [[ "${INTERRUPTED}" -eq 1 && ${gst_ret} -eq 0 ]]; then
+        log_warn "Stopped by the user : the output is complete up to the point reached"
+    fi
 
     # Show errors if any
-    if [[ -s /tmp/bookworm_ffmpeg_err.log ]]; then
-        grep -iE "error|warning|failed" /tmp/bookworm_ffmpeg_err.log | \
-            grep -v "^$" | head -5 | \
+    if grep -qE '^(ERROR|ERREUR|WARNING)' "${log_file}"; then
+        grep -E -A2 '^(ERROR|ERREUR|WARNING)' "${log_file}" | head -6 | \
             while IFS= read -r line; do
                 printf "%b\n" "  ${YELLOW}${line}${NC}"
             done
     fi
-    rm -f /tmp/bookworm_ffmpeg_err.log
 
-    if [[ ${ffmpeg_ret} -ne 0 ]]; then
-        die "FFmpeg failed with exit code ${ffmpeg_ret}"
+    if [[ ${gst_ret} -ne 0 ]]; then
+        die "GStreamer failed with exit code ${gst_ret}"
     fi
 
     local end_time
     end_time=$(date +%s%N)
-    local elapsed=$(( (end_time - start_time) / 1000000 ))
     local elapsed_s
-    elapsed_s=$(echo "scale=2; ${elapsed}/1000" | bc)
+    elapsed_s=$(awk -v ns="$(( end_time - start_time ))" 'BEGIN { printf "%.2f", ns / 1e9 }')
 
     if [[ -f "${output}" && -s "${output}" ]]; then
         local size
@@ -329,6 +571,8 @@ encode_single() {
     else
         die "Encoding failed or output file is empty"
     fi
+    rm -rf "${WORK_DIR}"
+    WORK_DIR=""
 }
 
 batch_encode() {
@@ -342,8 +586,8 @@ batch_encode() {
 
     local codec_info
     codec_info=$(get_codec_info "${codec}")
-    local encoder ext codec_name
-    read -r encoder ext codec_name <<< "${codec_info}"
+    local encoder parser muxer ext codec_name
+    read -r encoder parser muxer ext codec_name <<< "${codec_info}"
 
     # Find video files
     local files=()
@@ -365,14 +609,17 @@ batch_encode() {
     log_info "Output  : ${output_dir}"
     echo ""
 
+    # Each file runs in a subshell : die() stops that file only.
+    # Ctrl+C finishes the current file and stops the batch.
     local success=0 failed=0 i=1
+    IN_BATCH=1
     for input in "${files[@]}"; do
         local basename
         basename=$(basename "${input%.*}")
         local output="${output_dir}/${basename}_${codec,,}.${ext}"
 
         printf "%b\n" "${BOLD}[${i}/${#files[@]}] ${basename}${NC}"
-        if encode_single "${input}" "${output}" "${codec}" "${bitrate}"; then
+        if ( encode_single "${input}" "${output}" "${codec}" "${bitrate}" ); then
             (( success++ )) || true
         else
             log_error "Failed: ${input}"
@@ -380,57 +627,64 @@ batch_encode() {
         fi
         (( i++ )) || true
         echo ""
+        if [[ "${BATCH_STOP}" -eq 1 ]]; then
+            log_warn "Batch stopped by the user"
+            break
+        fi
     done
+    IN_BATCH=0
 
     printf "%b\n" "${BOLD}═══════════════════════════════════${NC}"
     log_result "Batch complete — Success: ${success} | Failed: ${failed}"
 }
 
 benchmark() {
-    log_step "Running VPU benchmark (1080p 30fps, 10 seconds)..."
+    log_step "Running VPU benchmark (1080p 30fps, 10 seconds = 300 frames)..."
     echo ""
 
     local codecs=("h264" "hevc" "vp8" "vp9")
     local results=()
+    local frames=300
+
+    WORK_DIR=$(mktemp -d)
 
     for codec in "${codecs[@]}"; do
         local codec_info
         codec_info=$(get_codec_info "${codec}")
-        local encoder ext codec_name
-        read -r encoder ext codec_name <<< "${codec_info}"
+        local encoder parser muxer ext codec_name
+        read -r encoder parser muxer ext codec_name <<< "${codec_info}"
 
         printf "  Testing %-12s : " "${codec_name}"
 
-        local tmpout
-        tmpout=$(mktemp /tmp/bookworm_bench_XXXXXX.${ext})
+        if ! have_element "${encoder}"; then
+            printf "%b\n" "${RED}not available${NC}"
+            results+=("${codec_name}|-|-|-")
+            continue
+        fi
 
-        local start end elapsed fps speed
+        local tmpout="${WORK_DIR}/bench.${ext}"
+        local start end elapsed_ms
         start=$(date +%s%N)
 
-        local bench_output
-        bench_output=$("${FFMPEG}" \
-            -f lavfi -i "testsrc=duration=10:size=1920x1080:rate=30" \
-            -vf "format=${DEFAULT_PIXFMT}" \
-            -c:v "${encoder}" -b:v "4M" \
-            -y "${tmpout}" 2>&1)
-
-        end=$(date +%s%N)
-        elapsed=$(( (end - start) / 1000000 ))
-
-        rm -f "${tmpout}"
-
-        # Extract fps and speed from ffmpeg output
-        fps=$(echo "${bench_output}" | grep -oP 'fps=\s*\K[0-9.]+' | tail -1)
-        speed=$(echo "${bench_output}" | grep -oP 'speed=\s*\K[0-9.]+' | tail -1)
-        local size=$(echo "${bench_output}" | grep -oP 'video:\K[0-9]+KiB' | tail -1)
-
-        if [[ -n "${fps}" ]]; then
+        if LC_ALL=C gst-launch-1.0 -q \
+            videotestsrc num-buffers="${frames}" pattern=smpte \
+            ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 \
+            ! "${encoder}" extra-controls="encode,${RATE_CONTROLS},video_bitrate=4000000" \
+            ! "${parser}" ! "${muxer}" ! filesink location="${tmpout}" \
+            > "${WORK_DIR}/bench.log" 2>&1; then
+            end=$(date +%s%N)
+            elapsed_ms=$(( (end - start) / 1000000 ))
+            local fps speed size
+            fps=$(awk -v f="${frames}" -v e="${elapsed_ms}" 'BEGIN { printf "%.0f", f * 1000 / e }')
+            speed=$(awk -v e="${elapsed_ms}" 'BEGIN { printf "%.1f", 10000 / e }')
+            size=$(du -k "${tmpout}" | cut -f1)KiB
             printf "%b\n" "${GREEN}${fps} fps${NC} | ${speed}x realtime | ${size}"
             results+=("${codec_name}|${fps}|${speed}|${size}")
         else
             printf "%b\n" "${RED}FAILED${NC}"
             results+=("${codec_name}|FAILED|FAILED|0")
         fi
+        rm -f "${tmpout}"
     done
 
     echo ""
@@ -443,6 +697,7 @@ benchmark() {
         IFS='|' read -r cn f s sz <<< "${r}"
         printf "  %-20s %-10s %-12s %s\n" "${cn}" "${f}" "${s}x" "${sz}"
     done
+    echo "  (test pattern source, includes the time to generate the frames)"
     echo ""
 }
 
@@ -464,8 +719,16 @@ info_vpu() {
     echo "  Kernel module :"
     modinfo amvx 2>/dev/null | grep -E "filename|version" | sed 's/^/    /'
     echo ""
-    echo "  FFmpeg build :"
-    "${FFMPEG}" -version 2>&1 | head -2 | sed 's/^/    /'
+    echo "  GStreamer :"
+    gst-launch-1.0 --version 2>/dev/null | sed -n 2p | sed 's/^/    /'
+    local enc
+    for enc in v4l2h264enc v4l2h265enc v4l2vp8enc v4l2vp9enc; do
+        if have_element "${enc}"; then
+            echo "    ${enc} ✓"
+        else
+            echo "    ${enc} ✗"
+        fi
+    done
     echo ""
 }
 
@@ -500,25 +763,25 @@ usage() {
     printf "  %binfo%b\n" "${CYAN}" "${NC}"
     printf "    Show VPU device information and capabilities\n\n"
     printf "  %bcheck%b\n" "${CYAN}" "${NC}"
-    printf "    Check system requirements (driver, permissions, ffmpeg)\n\n"
+    printf "    Check system requirements (driver, permissions, GStreamer)\n\n"
     printf "%b\n" "${BOLD}HARDWARE INFO${NC}"
     printf "  SoC     : CIX P1 / CD8180 (OrangePi 6 Plus)\n"
-    printf "  VPU     : ARM Linlon MVE v8 - 4 cores\n"
-    printf "  Driver  : amvx (requires fix-amvx-vb2-lock kernel patch)\n"
-    printf "  FFmpeg  : ffmpeg-sky1 8.0.1 (Sky1-Linux fork)\n\n"
+    printf "  VPU     : ARM Linlon MVE v8\n"
+    printf "  Driver  : amvx (BOOKWORM Sky1 kernel)\n"
+    printf "  Backend : GStreamer V4L2 encoders (stock Ubuntu packages)\n\n"
     printf "%b\n" "${BOLD}NOTES${NC}"
-    printf "  Input is automatically converted to NV12 (required by the VPU)\n"
-    printf "  Audio is re-encoded to AAC 128k by default\n"
-    printf "  For copy audio: set AUDIO_CODEC=copy before running\n"
-    printf "  VP8/VP9 output goes to .webm format automatically\n\n"
+    printf "  Video is decoded by the CPU, converted to NV12 and encoded by the VPU\n"
+    printf "  Audio : first audio stream, AAC (mp4) or Opus (webm), bitrate by channel count\n"
+    printf "  Subtitles and other streams are not kept\n"
+    printf "  VP8/VP9 output goes to .webm format automatically\n"
+    printf "  Ctrl+C stops the encoding and keeps a playable file\n\n"
     printf "%b\n" "${BOLD}ENVIRONMENT${NC}"
-    printf "  FFMPEG_BIN      Path to ffmpeg binary (default: ffmpeg-sky1)\n"
-    printf "  FFPROBE_BIN     Path to ffprobe binary (default: ffprobe-sky1)\n"
-    printf "  AUDIO_CODEC     Audio codec (default: aac)\n"
-    printf "  AUDIO_BITRATE   Audio bitrate (default: 128k)\n\n"
+    printf "  AUDIO_CODEC     auto (default) or none (video only)\n"
+    printf "  AUDIO_BITRATE   Audio bitrate (default: 96k mono, 128k stereo, 384k 5.1, 512k 7.1)\n"
+    printf "  VPU_DECODE      auto (default: VPU decode for 8-bit H.264/H.265/VP8/VP9/AV1) or no (CPU)\n\n"
     printf "%b\n" "${BOLD}PROJECT${NC}"
     printf "  BOOKWORM - Making complex open-source technologies accessible\n"
-    printf "  Patch & ebuild : https://www.bookworm-mon0.org\n\n"
+    printf "  https://www.bookworm-mon0.org\n\n"
 }
 
 # =============================================================================

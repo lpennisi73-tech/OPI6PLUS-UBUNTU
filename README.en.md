@@ -476,8 +476,6 @@ acceleration, without rebooting. If it happens to you, note the time and what yo
 - The audio DSP firmware (CIX's `cix-audio-dsp` package) is not installed: nothing uses it. Sound goes
   straight through I2S and HDA; the DSP (`remoteproc0`, `cix-dsp-rproc`) does not start by itself and the
   device tree declares no SOF sound card that would use it.
-- VPU encoding (`scripts-addons/bookworm-vpu-encode`): written for Gentoo's `ffmpeg-sky1`, not yet
-  adapted to Ubuntu.
 
 ---
 
@@ -744,6 +742,35 @@ curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | sudo bash -s -- --remove
 
 To read the script before running it: `curl -fsSL https://www.bookworm-mon0.org/apt/setup.sh | less`.
 Building it yourself is still possible (procedure above, `bookworm-sky1-build.sh --install`).
+
+---
+
+## 🎬 Encode a video with the VPU (`scripts-addons/bookworm-vpu-encode`)
+
+Re-encodes videos to H.264, HEVC, VP8 or VP9 with the board's hardware encoder, through GStreamer and the
+Ubuntu packages (no modified FFmpeg to install).
+
+```bash
+# GStreamer tools (the rest is already installed with the desktop and third-party codecs)
+sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-libav
+
+scripts-addons/bookworm-vpu-encode check                                  # driver, permissions, encoders
+scripts-addons/bookworm-vpu-encode encode film.mkv film-h264.mp4          # H.264, 4 Mbit/s
+scripts-addons/bookworm-vpu-encode encode film.mkv film-hevc.mp4 hevc 6M  # HEVC, 6 Mbit/s
+scripts-addons/bookworm-vpu-encode batch ./videos ./encoded vp9 3M        # a whole folder (.webm)
+scripts-addons/bookworm-vpu-encode benchmark                              # 1080p30, 4 codecs
+```
+
+- The video is decoded **and** encoded by the VPU: about **12× real time** for a 1080p H.264 Blu-ray
+  with 5.1 sound (a 2 h 44 film encoded to H.265 6M in 14 minutes), with almost no CPU. VPU decoding
+  for 8-bit H.264, H.265, VP8, VP9 and AV1; other formats (10-bit, MPEG-2…) are decoded by the CPU
+  (~2.7×), and the script falls back to it by itself if the VPU chain does not start. `VPU_DECODE=no` forces CPU decoding.
+- Sound: first audio track, as AAC (`.mp4`) or Opus (`.webm`), bitrate by channel count (5.1 → 384k);
+  `AUDIO_CODEC=none` for video only, `AUDIO_BITRATE=…` to force the bitrate. Subtitles are not kept.
+- **Ctrl+C** stops the encoding and keeps a file playable up to the point reached (in `batch` mode: the
+  current file is finished, then the batch stops).
+- Why not FFmpeg: the VPU driver reports NV12 with 2 planes and YU12 with 3 planes (the V4L2 spec says
+  one); Ubuntu's FFmpeg then sends no colour to the encoder. GStreamer follows what the driver says.
 
 ---
 
