@@ -18,7 +18,8 @@
 # Essai E : --clients 10 --keep-governor : 10 glmark2 en même temps (plus de groupes que les
 # 8 emplacements CSG du GPU, donc rotation permanente des groupes), fréquences laissées au
 # gouverneur (bornes du système, plancher 350 MHz compris).
-# ATTENTION : s'il reproduit le défaut, le GPU reste perdu jusqu'au prochain démarrage
+# ATTENTION : s'il reproduit le défaut, le GPU est remis à zéro (patch 0049) ou, sans lui, perdu jusqu'au
+# prochain démarrage
 # (session relancée en rendu logiciel) : enregistrer son travail avant.
 # Résultat : /root/sky1-gpu-diag/dvfs-HHMM.log
 #
@@ -142,7 +143,7 @@ while (( $(date +%s) < END )); do
             log "!!! BLOCAGE après ${el} s et $n changements de fréquence (dernière imposée : $((f / 1000000)) MHz)"
         fi
         dmesg | grep -E "panthor|scmi|$PATTERN" | tail -40 >> "$LOG"
-        log "Messages noyau ajoutés au journal. Le GPU restera perdu jusqu'au redémarrage."
+        log "Messages noyau ajoutés au journal. Récupération (patch 0049) : « Sky1: GPU recovered » ; sinon GPU perdu jusqu'au redémarrage."
         restore
         exit 2
     fi

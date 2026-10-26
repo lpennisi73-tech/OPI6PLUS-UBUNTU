@@ -15,22 +15,31 @@ as done at probe time, and run a slow reset once more. The GPU IRQ is
 masked around the pulse and requests left pending on the wedged GPU are
 dropped, since they will never be acked.
 
+The AS slots lock is held from the reset pulse until the soft reset and
+the L2 power-up are done. Address space users such as panthor_vm_free(),
+run from the group cleanup work of a process that lost its context,
+still poll AS registers during a reset: harmless across a soft reset,
+but a register access while the reset line is asserted is a bus error,
+i.e. a fatal SError (seen once with several VLC instances).
+
 Can be turned off with panthor.sky1_hard_reset=0. For testing,
 panthor.sky1_hard_reset_test=1 takes this path on the next reset, even
 a successful one.
 
 Signed-off-by: kennytech73 <contact@bookworm-mon0.org>
 ---
- drivers/gpu/drm/panthor/panthor_device.c | 57 ++++++++++++++++++++++++
- drivers/gpu/drm/panthor/panthor_gpu.c    | 35 +++++++++++++++
+ drivers/gpu/drm/panthor/panthor_device.c | 61 ++++++++++++++++++++++++
+ drivers/gpu/drm/panthor/panthor_gpu.c    | 35 ++++++++++++++
  drivers/gpu/drm/panthor/panthor_gpu.h    |  1 +
- 3 files changed, 93 insertions(+)
+ drivers/gpu/drm/panthor/panthor_mmu.c    | 24 ++++++++++
+ drivers/gpu/drm/panthor/panthor_mmu.h    |  2 +
+ 5 files changed, 123 insertions(+)
 
 diff --git a/drivers/gpu/drm/panthor/panthor_device.c b/drivers/gpu/drm/panthor/panthor_device.c
-index d7c73e554..13f928bc9 100644
+index d7c73e554..5c55e3b1c 100644
 --- a/drivers/gpu/drm/panthor/panthor_device.c
 +++ b/drivers/gpu/drm/panthor/panthor_device.c
-@@ -360,6 +360,55 @@ static void panthor_device_reset_cleanup(struct drm_device *ddev, void *data)
+@@ -360,6 +360,59 @@ static void panthor_device_reset_cleanup(struct drm_device *ddev, void *data)
  	destroy_workqueue(ptdev->reset.wq);
  }
  
@@ -63,8 +72,11 @@ index d7c73e554..13f928bc9 100644
 +	panthor_fw_pre_reset(ptdev, true);
 +	panthor_mmu_pre_reset(ptdev);
 +
++	/* No AS register access until the GPU is out of reset and soft reset. */
++	panthor_mmu_sky1_block_as(ptdev);
 +	ret = panthor_gpu_sky1_reset_pulse(ptdev);
 +	if (ret) {
++		panthor_mmu_sky1_unblock_as(ptdev);
 +		drm_err(&ptdev->base, "Sky1: GPU reset line failed: %d", ret);
 +		return ret;
 +	}
@@ -75,6 +87,7 @@ index d7c73e554..13f928bc9 100644
 +
 +	panthor_hw_soft_reset(ptdev);
 +	panthor_hw_l2_power_on(ptdev);
++	panthor_mmu_sky1_unblock_as(ptdev);
 +	panthor_mmu_post_reset(ptdev);
 +	ret = panthor_fw_post_reset(ptdev);
 +	if (!ret)
@@ -86,7 +99,7 @@ index d7c73e554..13f928bc9 100644
  static void panthor_device_reset_work(struct work_struct *work)
  {
  	struct panthor_device *ptdev = container_of(work, struct panthor_device, reset.work);
-@@ -381,6 +430,14 @@ static void panthor_device_reset_work(struct work_struct *work)
+@@ -381,6 +434,14 @@ static void panthor_device_reset_work(struct work_struct *work)
  	panthor_hw_l2_power_on(ptdev);
  	panthor_mmu_post_reset(ptdev);
  	ret = panthor_fw_post_reset(ptdev);
@@ -165,4 +178,52 @@ index f615feb05..0da134c49 100644
 +int panthor_gpu_sky1_reset_pulse(struct panthor_device *ptdev);
  void panthor_gpu_power_changed_off(struct panthor_device *ptdev);
  int panthor_gpu_power_changed_on(struct panthor_device *ptdev);
+ 
+diff --git a/drivers/gpu/drm/panthor/panthor_mmu.c b/drivers/gpu/drm/panthor/panthor_mmu.c
+index a52b4ee78..0244bd890 100644
+--- a/drivers/gpu/drm/panthor/panthor_mmu.c
++++ b/drivers/gpu/drm/panthor/panthor_mmu.c
+@@ -2000,6 +2000,30 @@ void panthor_mmu_pre_reset(struct panthor_device *ptdev)
+ 	mutex_unlock(&ptdev->mmu->vm.lock);
+ }
+ 
++/**
++ * panthor_mmu_sky1_block_as() - Keep AS register users away (Sky1 hard reset)
++ * @ptdev: Device.
++ *
++ * Paths freeing or updating an address space (panthor_vm_free() from the
++ * group cleanup work, for instance) still poll AS registers during a reset.
++ * That is fine across a soft reset, but a register access while the GPU sits
++ * behind its asserted reset line is a bus error, i.e. a fatal SError. Holding
++ * the AS slots lock around the reset line pulse keeps them out.
++ */
++void panthor_mmu_sky1_block_as(struct panthor_device *ptdev)
++{
++	mutex_lock(&ptdev->mmu->as.slots_lock);
++}
++
++/**
++ * panthor_mmu_sky1_unblock_as() - Undo panthor_mmu_sky1_block_as()
++ * @ptdev: Device.
++ */
++void panthor_mmu_sky1_unblock_as(struct panthor_device *ptdev)
++{
++	mutex_unlock(&ptdev->mmu->as.slots_lock);
++}
++
+ /**
+  * panthor_mmu_post_reset() - Restore things after a reset
+  * @ptdev: Device.
+diff --git a/drivers/gpu/drm/panthor/panthor_mmu.h b/drivers/gpu/drm/panthor/panthor_mmu.h
+index 3522fbbce..cac424b66 100644
+--- a/drivers/gpu/drm/panthor/panthor_mmu.h
++++ b/drivers/gpu/drm/panthor/panthor_mmu.h
+@@ -21,6 +21,8 @@ int panthor_mmu_init(struct panthor_device *ptdev);
+ void panthor_mmu_unplug(struct panthor_device *ptdev);
+ void panthor_mmu_pre_reset(struct panthor_device *ptdev);
+ void panthor_mmu_post_reset(struct panthor_device *ptdev);
++void panthor_mmu_sky1_block_as(struct panthor_device *ptdev);
++void panthor_mmu_sky1_unblock_as(struct panthor_device *ptdev);
+ void panthor_mmu_suspend(struct panthor_device *ptdev);
+ void panthor_mmu_resume(struct panthor_device *ptdev);
  

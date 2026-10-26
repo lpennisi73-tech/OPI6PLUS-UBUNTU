@@ -338,7 +338,8 @@ Linux 7.2** dans ce dépôt (`patches/sky1-7.2/`, décisions patch par patch dan
 - `0046` (BOOKWORM) : VPU bloqué quand un lecteur se déplace dans la vidéo pendant sa mise en route ;
 - `0047` (BOOKWORM) : HDR masqué (son activation plantait le noyau et GNOME) ;
 - `0048` (BOOKWORM) : son HDMI perdu au réveil de l'écran (réinitialisation complète du contrôleur DP) ;
-- `0049` (BOOKWORM) : GPU bloqué récupéré par sa ligne de reset au lieu d'être perdu jusqu'au redémarrage.
+- `0049` (BOOKWORM) : GPU bloqué récupéré par sa ligne de reset au lieu d'être perdu jusqu'au redémarrage
+  (v2, noyau 7.2.12-3 : plus de panique si une application libère sa mémoire GPU pendant ce reset).
 
 La config Sky1 de référence est copiée dans `config/sky1/` : le build ne dépend plus de linux-sky1.
 Pour porter la série sur une version suivante (7.3…), voir `tools/portage-sky1/README.md`.
@@ -361,7 +362,7 @@ l'historique git).
 | Rapport de plantage de l'installateur au clic « Redémarrer » | `zpool export -a` échoue : pas de module ZFS dans le noyau Sky1 | enveloppe `zpool` dans le système live de l'ISO (`/usr/local/sbin/zpool`) |
 | Bureau figé, session impossible à arrêter (`Failed to stop MCU`, processus en état D) | la mise en veille runtime du GPU échoue et panthor s'interbloque entre veille et reset | `config/udev/90-sky1-gpu-pm.rules` (GPU maintenu éveillé) |
 | GPU perdu sous charge, session relancée sans accélération (`job timeout`, `CSG … update request timedout`) | le GPU décroche en passant par les fréquences 72 / 216 MHz ajoutées par le firmware (hors niveaux CIX) | `config/udev/90-sky1-gpu-pm.rules` (minimum 350 MHz) |
-| Après un blocage du GPU, « Failed to boot MCU after reset, making device unusable » : bureau en rendu logiciel jusqu'au redémarrage | le reset logiciel ne relance pas le microcontrôleur (MCU) du GPU | patch `0049` : reset par la ligne de reset du GPU, puis relance du firmware (`panthor.sky1_hard_reset`, actif par défaut) |
+| Après un blocage du GPU, « Failed to boot MCU after reset, making device unusable » : bureau en rendu logiciel jusqu'au redémarrage | le reset logiciel ne relance pas le microcontrôleur (MCU) du GPU | patch `0049` : reset par la ligne de reset du GPU, puis relance du firmware (`panthor.sky1_hard_reset`, actif par défaut ; v2 dans 7.2.12-3, voir ci-dessous) |
 | Pilote d'affichage disputé au boot | Linux 7.2 : `komeda` reconnaît aussi l'affichage Sky1 | `DRM_KOMEDA` désactivé |
 | 2ᵉ écran « Inconnu » dans GNOME | le framebuffer du firmware (simpledrm) n'était jamais retiré | patch `0045` (linlon-dp) |
 | Trace noyau à la lecture vidéo | firmwares VPU absents + bug du pilote sur ce cas (mémoire libérée réutilisée) | paquet `cix-vpu-firmware` + patch `0045` |
@@ -462,12 +463,17 @@ fréquence avec tous les niveaux, aucun sur 10 629 changements à partir de 350 
 `bookworm-sky1-settings` 1.1.38, la règle udev du GPU fixe son minimum à 350 MHz (un peu plus de
 consommation au repos).
 
-Un blocage plus rare reste possible sous très forte charge (vu une fois le 24 octobre avec 4 vidéos lues en
-même temps ; non reproduit à la demande). Depuis le noyau **7.2.12-2** (patch 0049), le GPU n'est plus perdu :
-le pilote le réinitialise par sa ligne de reset et relance son firmware (`Sky1: GPU recovered after a reset
-through its reset line` dans `journalctl -k`). gnome-shell ne survit pas à la perte de son contexte
-graphique : la session est relancée (retour à l'écran de connexion, applications ouvertes fermées), mais
-avec l'accélération matérielle, sans redémarrer. Si cela vous arrive, notez l'heure et ce que vous faisiez.
+Un blocage plus rare reste possible, surtout pendant la lecture de vidéos (souvent plusieurs à la fois,
+dans Showtime ou VLC : quelques cas entre le 24 et le 26 octobre ; non reproduit à la demande, cause non
+trouvée). Depuis le noyau **7.2.12-2** (patch 0049), le GPU n'est plus perdu : le pilote le réinitialise
+par sa ligne de reset et relance son firmware (`Sky1: GPU recovered after a reset through its reset line`
+dans `journalctl -k`). Le noyau **7.2.12-3** (0049 v2) corrige une panique du noyau constatée une fois
+pendant cette remise à zéro (une application qui libérait sa mémoire GPU au même moment) : **mettez à jour
+vers 7.2.12-3** (`sudo apt upgrade` avec le dépôt APT BOOKWORM). Selon ce que le bureau affichait,
+gnome-shell recrée son contexte graphique (la session continue) ou plante (retour à l'écran de connexion,
+applications ouvertes fermées) ; dans les deux cas l'accélération matérielle revient sans redémarrer. Les
+lecteurs vidéo ouverts au moment du blocage s'arrêtent en général. Si cela vous arrive, notez l'heure et ce
+que vous faisiez.
 
 ### Autres
 - **Températures** : le firmware refuse d'activer les capteurs SCMI (`Error enabling sensor … err=-2`) :
@@ -768,7 +774,12 @@ scripts-addons/bookworm-vpu-encode benchmark                              # 1080
 - La vidéo est décodée **et** encodée par le VPU : environ **12× le temps réel** pour un Blu-ray 1080p
   H.264 avec son 5.1 (film de 2 h 44 encodé en H.265 6M en 14 minutes), presque sans processeur.
   Décodage VPU pour H.264, H.265, VP8, VP9 et AV1 en 8 bits ; les autres formats (10 bits, MPEG-2…) sont
-  décodés par le processeur (~2,7×), et le script y revient seul si la chaîne VPU ne démarre pas. `VPU_DECODE=no` force le décodage par le processeur.
+  décodés par le processeur (~2,7×), et le script y revient seul si la chaîne VPU ne démarre pas.
+  `VPU_DECODE=no` force le décodage par le processeur.
+- Quel débit choisir : pour une source déjà compressée (copie de Blu-ray en H.264 à ~3 Mbit/s), `hevc 3M`
+  est presque identique à `hevc 6M` à l'œil, pour une taille deux fois plus petite (film de 2 h 44 : 4,2 Go
+  contre 7,9 Go). Pour un Blu-ray d'origine ou une vidéo de caméra, compter `hevc 4M` à `6M`. Donner plus
+  de débit que la source n'améliore pas l'image, seulement la taille du fichier.
 - Son : première piste audio, en AAC (`.mp4`) ou Opus (`.webm`), débit selon le nombre de canaux (5.1 →
   384k) ; `AUDIO_CODEC=none` pour la vidéo seule, `AUDIO_BITRATE=…` pour forcer le débit. Sous-titres non
   repris.

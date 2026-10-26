@@ -22,6 +22,12 @@ if [[ -z "${DISTCC_HOST:-}" ]]; then
     echo "✗ DISTCC_HOST non défini : créer distcc-env.local (voir l'en-tête de distcc-env.sh)"
     return 1 2>/dev/null || exit 1
 fi
+# distcc range ses verrous sous $HOME/.distcc : sans HOME (service systemd-run), il compile
+# tout en local sans le dire (« failed to lock »)
+if [[ -z "${HOME:-}" ]]; then
+    HOME=$(getent passwd "$(id -un)" | cut -d: -f6)
+    export HOME
+fi
 DISTCC_HOST_JOBS=${DISTCC_HOST_JOBS:-16}
 DISTCC_LOCAL_JOBS=${DISTCC_LOCAL_JOBS:-4}
 

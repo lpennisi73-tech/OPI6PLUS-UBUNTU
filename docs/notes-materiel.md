@@ -346,3 +346,24 @@ Paramètres : `panthor.sky1_hard_reset` (défaut Y) et `panthor.sky1_hard_reset_
 chemin à la prochaine remise à zéro, puis revient à N). Validé : `sky1_hard_reset_test=1` + `--floor 72`
 → « Sky1: GPU recovered after a reset through its reset line » dans la même seconde, glmark2 2862 ensuite.
 gnome-shell plante (contexte GL perdu) et GDM relance la session, avec l'accélération. Noyau 7.2.12-2.
+
+**Suite (2026-10-25 → 26)** : nouveaux blocages, tous pendant la lecture de vidéos et tous récupérés par
+0049 : 24/10 18:48 (Kingston, Showtime au démarrage de la lecture), 25/10 14:37 (Showtime, juste après un
+saut), 25/10 23:43 (Showtime avec 4 vidéos dans un seul processus, dont une en `smb://`), 26/10 05:15
+(Kingston 26.04.1, **VLC**, 3 vidéos). `GSK_RENDERER=gl` pour Showtime ne l'empêche pas (cas du 25/10 23:43) :
+le rendu Vulkan de GTK n'est pas le seul suspect, GStreamer GL / panfrost reste en cause possible.
+Après la récupération, les lecteurs ne s'en remettent pas (Showtime : flot de `CS_FAULT DATA_INVALID_FAULT`
+et `panfrost_batch_submit failed: 22`, puis signal 11). gnome-shell : plante (signal 11) ou recrée son
+contexte (« Group became unusable, re-initializing context », session gardée) selon ce qu'il avait en
+cours sur le GPU ; gardé le 25/10 23:43 et aux 6 essais du 26/10, perdu le 24/10 13:05 et le 25/10 14:37.
+**Panique du 26/10 05:15** (Kingston, kdump chargé mais aucun vidage) : juste après « resetting the GPU
+through its reset line », SError sur un cœur dans `group_release_work` → `panthor_vm_free` →
+`panthor_mmu_as_disable` → `wait_ready` (lecture d'`AS_STATUS`) ; la console série montre 36 ×
+`ERROR: IDM: GPU secure access` (moniteur d'interconnexion du firmware). `as_disable` ne regarde pas
+`reset_in_progress` et tient `as.slots_lock`, sans danger pendant un reset logiciel, mais 0049 v1 tirait
+la ligne de reset sans ce verrou : lecture d'un registre du GPU pendant le reset = erreur de bus fatale.
+**0049 v2** : `panthor_mmu_sky1_block_as()` / `_unblock_as()` tiennent `as.slots_lock` de l'impulsion de
+reset jusqu'à la fin du soft reset et de l'allumage du L2 (ces étapes ne prennent pas ce verrou ; ordre
+slots_lock → reqs_lock identique à `as_disable`). Validé : 6 essais `--floor 72 --clients 4` avec
+`sky1_hard_reset_test=1` → 6 « GPU recovered », 0 SError/panique/WARNING, gnome-shell gardé à chaque fois.
+Noyau 7.2.12-3 (dépôt APT le 26/10).

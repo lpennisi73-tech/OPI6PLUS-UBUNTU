@@ -339,7 +339,8 @@ Linux 7.2** in this repository (`patches/sky1-7.2/`, patch-by-patch decisions in
 - `0046` (BOOKWORM): VPU stuck when a player seeks in the video while it is starting;
 - `0047` (BOOKWORM): HDR hidden (enabling it crashed the kernel and GNOME);
 - `0048` (BOOKWORM): HDMI sound lost when the display wakes up (full reset of the DP controller);
-- `0049` (BOOKWORM): a hung GPU is recovered through its reset line instead of being lost until reboot.
+- `0049` (BOOKWORM): a hung GPU is recovered through its reset line instead of being lost until reboot
+  (v2, kernel 7.2.12-3: no more panic if an application frees its GPU memory during that reset).
 
 The reference Sky1 config is copied into `config/sky1/`: the build no longer depends on linux-sky1.
 To port the series to a later version (7.3…), see `tools/portage-sky1/README.md`.
@@ -362,7 +363,7 @@ git history).
 | Installer crash report when clicking "Restart" | `zpool export -a` fails: no ZFS module in the Sky1 kernel | `zpool` wrapper in the ISO live system (`/usr/local/sbin/zpool`) |
 | Frozen desktop, session impossible to stop (`Failed to stop MCU`, processes in D state) | GPU runtime suspend fails and panthor deadlocks between suspend and reset | `config/udev/90-sky1-gpu-pm.rules` (GPU kept awake) |
 | GPU lost under load, session restarted without acceleration (`job timeout`, `CSG … update request timedout`) | the GPU drops out when going through the 72 / 216 MHz frequencies added by the firmware (outside the CIX levels) | `config/udev/90-sky1-gpu-pm.rules` (350 MHz minimum) |
-| After a GPU hang, "Failed to boot MCU after reset, making device unusable": desktop in software rendering until reboot | the soft reset does not restart the GPU microcontroller (MCU) | patch `0049`: reset through the GPU reset line, then firmware restart (`panthor.sky1_hard_reset`, on by default) |
+| After a GPU hang, "Failed to boot MCU after reset, making device unusable": desktop in software rendering until reboot | the soft reset does not restart the GPU microcontroller (MCU) | patch `0049`: reset through the GPU reset line, then firmware restart (`panthor.sky1_hard_reset`, on by default; v2 in 7.2.12-3, see below) |
 | Display driver contended at boot | Linux 7.2: `komeda` also matches the Sky1 display | `DRM_KOMEDA` disabled |
 | 2nd "Unknown" display in GNOME | the firmware framebuffer (simpledrm) was never removed | patch `0045` (linlon-dp) |
 | Kernel trace when playing a video | missing VPU firmware + driver bug in that case (use after free) | `cix-vpu-firmware` package + patch `0045` |
@@ -459,12 +460,16 @@ under load. Reproduced on demand (`diagnostics/gpu-dvfs-stress.sh`): hang after 
 all levels, none over 10,629 changes from 350 MHz up. Since `bookworm-sky1-settings` 1.1.38, the GPU udev
 rule sets its minimum to 350 MHz (slightly higher idle power).
 
-A rarer hang is still possible under very heavy load (seen once on 24 October with 4 videos played at the
-same time; not reproduced on demand). Since kernel **7.2.12-2** (patch 0049), the GPU is no longer lost:
-the driver resets it through its reset line and restarts its firmware (`Sky1: GPU recovered after a reset
-through its reset line` in `journalctl -k`). gnome-shell does not survive losing its graphics context: the
-session is restarted (back to the login screen, open applications closed), but with hardware
-acceleration, without rebooting. If it happens to you, note the time and what you were doing.
+A rarer hang is still possible, mostly while playing videos (often several at once, in Showtime or VLC:
+a few cases between 24 and 26 October; not reproduced on demand, cause not found). Since kernel
+**7.2.12-2** (patch 0049), the GPU is no longer lost: the driver resets it through its reset line and
+restarts its firmware (`Sky1: GPU recovered after a reset through its reset line` in `journalctl -k`).
+Kernel **7.2.12-3** (0049 v2) fixes a kernel panic seen once during that reset (an application was freeing
+its GPU memory at the same moment): **update to 7.2.12-3** (`sudo apt upgrade` with the BOOKWORM APT
+repository). Depending on what the desktop was showing, gnome-shell either recreates its graphics context
+(the session goes on) or crashes (back to the login screen, open applications closed); either way hardware
+acceleration comes back without rebooting. Video players open at the time of the hang usually stop. If it
+happens to you, note the time and what you were doing.
 
 ### Other
 - **Temperatures**: the firmware refuses to enable the SCMI sensors (`Error enabling sensor … err=-2`):
@@ -764,7 +769,12 @@ scripts-addons/bookworm-vpu-encode benchmark                              # 1080
 - The video is decoded **and** encoded by the VPU: about **12× real time** for a 1080p H.264 Blu-ray
   with 5.1 sound (a 2 h 44 film encoded to H.265 6M in 14 minutes), with almost no CPU. VPU decoding
   for 8-bit H.264, H.265, VP8, VP9 and AV1; other formats (10-bit, MPEG-2…) are decoded by the CPU
-  (~2.7×), and the script falls back to it by itself if the VPU chain does not start. `VPU_DECODE=no` forces CPU decoding.
+  (~2.7×), and the script falls back to it by itself if the VPU chain does not start. `VPU_DECODE=no`
+  forces CPU decoding.
+- Which bitrate: for an already compressed source (H.264 Blu-ray rip at ~3 Mbit/s), `hevc 3M` looks almost
+  the same as `hevc 6M`, at half the size (2 h 44 film: 4.2 GB against 7.9 GB). For an original Blu-ray or
+  a camera video, use `hevc 4M` to `6M`. Giving more bitrate than the source does not improve the picture,
+  only the file size.
 - Sound: first audio track, as AAC (`.mp4`) or Opus (`.webm`), bitrate by channel count (5.1 → 384k);
   `AUDIO_CODEC=none` for video only, `AUDIO_BITRATE=…` to force the bitrate. Subtitles are not kept.
 - **Ctrl+C** stops the encoding and keeps a file playable up to the point reached (in `batch` mode: the
