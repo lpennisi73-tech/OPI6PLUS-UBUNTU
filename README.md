@@ -853,6 +853,11 @@ Le track (`config/kernels/7.2.12-stable.conf`) : version, options forcées (`FOR
 ./diagnostics/check-system.sh --temp   # températures
 ```
 
+**Testeurs** : `sudo ./diagnostics/rapport-testeur.sh` rassemble versions, matériel, journaux du
+démarrage courant et du précédent, plantages et journaux de l'installateur dans une archive anonymisée
+(nom de machine, utilisateurs, MAC, IP, numéros de série retirés), à envoyer avec la description du problème.
+Guide complet du test des ISO : **[docs/guide-testeurs.md](docs/guide-testeurs.md)**.
+
 Topologie CPU : cpu0 et cpu11 = A720 jusqu'à 2,6 GHz (boost) ; cpu1-4 = A520 1,8 GHz ;
 cpu5-6, 7-8, 9-10 = A720 2,2 à 2,5 GHz.
 
@@ -892,10 +897,11 @@ bookworm-sky1-kernel-ubuntu/
 ├── packaging/build-meta-deb.sh      # méta-paquets linux-image-sky1 / linux-headers-sky1 (dernier noyau)
 ├── iso/build-iso.sh              # ISO d'installation : ISO Ubuntu officielle + noyau Sky1
 ├── diagnostics/                  # check-system.sh (vérification après boot), video-diag.sh, audio-*.sh (son HDMI),
-│                                 # gpu-dvfs-stress.sh (blocage GPU), vpu-seek-test.py, reset-watch.py, blackbox.sh
+│                                 # gpu-dvfs-stress.sh (blocage GPU), vpu-seek-test.py, reset-watch.py, blackbox.sh,
+│                                 # rapport-testeur.sh (rapport anonymisé des testeurs)
 ├── scripts-addons/               # bookworm-clone.sh (clonage contrôlé), set-locale.sh, usb-rebind-bus10, bookworm-vpu-encode
 ├── tools/portage-sky1/           # outils pour porter la série sur un nouveau noyau
-├── docs/                         # notes matériel, astuces, guide de clonage
+├── docs/                         # notes matériel, astuces, guides de clonage et des testeurs
 └── LICENSE                       # GPL-2.0
 ```
 

@@ -846,6 +846,11 @@ The track (`config/kernels/7.2.12-stable.conf`): version, forced options (`FORCE
 ./diagnostics/check-system.sh --temp   # temperatures
 ```
 
+**Testers**: `sudo ./diagnostics/rapport-testeur.sh` gathers versions, hardware, logs of the current and
+previous boot, crashes and installer logs into one anonymised archive (host name, users, MAC, IP and serial
+numbers removed), to be sent with a description of the problem.
+Full ISO testing guide (in French): **[docs/guide-testeurs.md](docs/guide-testeurs.md)**.
+
 CPU topology: cpu0 and cpu11 = A720 up to 2.6 GHz (boost); cpu1-4 = A520 1.8 GHz;
 cpu5-6, 7-8, 9-10 = A720 2.2 to 2.5 GHz.
 
@@ -885,10 +890,11 @@ bookworm-sky1-kernel-ubuntu/
 ├── packaging/build-meta-deb.sh      # linux-image-sky1 / linux-headers-sky1 meta-packages (latest kernel)
 ├── iso/build-iso.sh              # installation ISO: official Ubuntu ISO + Sky1 kernel
 ├── diagnostics/                  # check-system.sh (post-boot check), video-diag.sh, audio-*.sh (HDMI sound),
-│                                 # gpu-dvfs-stress.sh (GPU hang), vpu-seek-test.py, reset-watch.py, blackbox.sh
+│                                 # gpu-dvfs-stress.sh (GPU hang), vpu-seek-test.py, reset-watch.py, blackbox.sh,
+│                                 # rapport-testeur.sh (anonymised tester report)
 ├── scripts-addons/               # bookworm-clone.sh (checked cloning), set-locale.sh, usb-rebind-bus10, bookworm-vpu-encode
 ├── tools/portage-sky1/           # tools to port the series to a new kernel
-├── docs/                         # hardware notes, tips, cloning guide (in French)
+├── docs/                         # hardware notes, tips, cloning and tester guides (in French)
 └── LICENSE                       # GPL-2.0
 ```
 
