@@ -1,5 +1,7 @@
 # Tester Ubuntu Sky1 sur Orange Pi 6 Plus : guide du testeur
 
+🇫🇷 Français | 🇬🇧 [English](guide-testeurs.en.md)
+
 Merci de tester ces ISO. Elles contiennent Ubuntu (26.10 ou 26.04.1 LTS) avec un noyau Linux adapté à
 l'Orange Pi 6 Plus (puce CIX CD8180, « Sky1 ») : accélération graphique, son DP/HDMI, VPU, NPU, USB-C,
 PCIe. Elles marchent bien sur la carte de développement ; vos retours servent à vérifier qu'elles

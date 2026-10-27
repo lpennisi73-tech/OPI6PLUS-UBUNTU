@@ -849,7 +849,7 @@ The track (`config/kernels/7.2.12-stable.conf`): version, forced options (`FORCE
 **Testers**: `sudo ./diagnostics/rapport-testeur.sh` gathers versions, hardware, logs of the current and
 previous boot, crashes and installer logs into one anonymised archive (host name, users, MAC, IP and serial
 numbers removed), to be sent with a description of the problem.
-Full ISO testing guide (in French): **[docs/guide-testeurs.md](docs/guide-testeurs.md)**.
+Full ISO testing guide: **[docs/guide-testeurs.en.md](docs/guide-testeurs.en.md)**.
 
 CPU topology: cpu0 and cpu11 = A720 up to 2.6 GHz (boost); cpu1-4 = A520 1.8 GHz;
 cpu5-6, 7-8, 9-10 = A720 2.2 to 2.5 GHz.
@@ -894,7 +894,7 @@ bookworm-sky1-kernel-ubuntu/
 │                                 # rapport-testeur.sh (anonymised tester report)
 ├── scripts-addons/               # bookworm-clone.sh (checked cloning), set-locale.sh, usb-rebind-bus10, bookworm-vpu-encode
 ├── tools/portage-sky1/           # tools to port the series to a new kernel
-├── docs/                         # hardware notes, tips, cloning and tester guides (in French)
+├── docs/                         # hardware notes, tips, cloning guide (in French), tester guide (FR/EN)
 └── LICENSE                       # GPL-2.0
 ```
 
