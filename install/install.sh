@@ -28,7 +28,7 @@ DO_DBG=false
 
 usage() {
     echo "Usage: $0 [options]"
-    echo "  --kernel <track>      Track (ex: 7.2.12-stable) ; defaut: deduit de --kernel-dir"
+    echo "  --kernel <track>      Track (ex: 7.2.13-stable) ; defaut: deduit de --kernel-dir"
     echo "  --kernel-dir <path>   Repertoire build kernel"
     echo "  --deb-dir <path>      Repertoire des .deb (defaut: parent de --kernel-dir)"
     echo "  --with-dbg            Installer aussi linux-image-<kver>-dbg (symboles, crash/kdump)"
@@ -82,7 +82,7 @@ if [[ -z "$KERNEL_TRACK" && -n "$KERNEL_BUILD_DIR" ]]; then
     fi
 fi
 [[ -z "$KERNEL_TRACK" ]] && {
-    echo -e "${RED}ERREUR: track kernel inconnu — preciser --kernel <track> (ex: 7.2.12-stable)${NC}"
+    echo -e "${RED}ERREUR: track kernel inconnu — preciser --kernel <track> (ex: 7.2.13-stable)${NC}"
     echo "  Tracks: $(ls "$PROJECT_DIR/config/kernels/" | sed 's/\.conf$//' | tr '\n' ' ')"
     exit 1
 }

@@ -4,13 +4,13 @@
 
 ### OrangePi 6 Plus — CIX CD8180 — Ubuntu 26.10 ARM64
 
-[![Kernel](https://img.shields.io/badge/Kernel-7.2.12--sky1-blue)](https://www.kernel.org)
+[![Kernel](https://img.shields.io/badge/Kernel-7.2.13--sky1-blue)](https://www.kernel.org)
 [![GPU](https://img.shields.io/badge/GPU-Mali--G720%20Panthor-green)](https://github.com/visorcraft/orange-pi-6-plus-gpu)
 [![Board](https://img.shields.io/badge/Board-OrangePi%206%20Plus-orange)](http://www.orangepi.org)
 [![OS](https://img.shields.io/badge/OS-Ubuntu%2026.10%20%7C%2026.04.1%20LTS-E95420)](https://ubuntu.com)
 [![Status](https://img.shields.io/badge/Status-Valid%C3%A9%20✓-brightgreen)]()
 
-> Compilez et installez un noyau Linux 7.2.12 complet pour l'OrangePi 6 Plus sous Ubuntu 26.10 :
+> Compilez et installez un noyau Linux 7.2.13 complet pour l'OrangePi 6 Plus sous Ubuntu 26.10 :
 > GPU Mali-G720, double écran DP + HDMI avec son, USB-C 10 Gb/s, NPU, VPU, boost CPU 2,6 GHz.
 > Né sous Gentoo (avril 2026), porté sur Ubuntu et sur Linux 7.2 par BOOKWORM/Kenny en octobre 2026.
 
@@ -25,7 +25,7 @@ trilin-dptx-cix 141b4000.dp: main link training done! rate:540000 lanes:4
 usb 16-1: new SuperSpeed Plus Gen 2x1 USB device number 2 using xhci-hcd
 ```
 
-| Fonction | État sur 7.2.12 |
+| Fonction | État sur 7.2.13 |
 |---|---|
 | Démarrage NVMe (PCIe Gen4), devicetree | ✅ |
 | GPU Mali-G720 (panthor 1.8.0, Vulkan, cohérence ACE-Lite) | ✅ |
@@ -168,7 +168,7 @@ Sans `--install`, le build s'arrête après les paquets ; l'installation se fait
 
 | Option de `bookworm-sky1-build.sh` | Effet |
 |---|---|
-| `--kernel <track>` | track à compiler, `config/kernels/<track>.conf` (défaut : `7.2.12-stable`) |
+| `--kernel <track>` | track à compiler, `config/kernels/<track>.conf` (défaut : `7.2.13-stable`) |
 | `--install` | lance `install/install.sh` après la compilation |
 | `--no-dbg` | ne construit pas le paquet `-dbg` (~16 min et 1,7 Go de moins ; le `vmlinux` avec symboles reste dans l'arbre de build pour décoder un Oops). Permanent : `KERNEL_DBG_PKG="no"` dans `config/board.conf` |
 | `--jobs <n>` | nombre de compilations en parallèle (défaut : nombre de cœurs, ou `SKY1_JOBS` de distcc-env.sh) |
@@ -182,14 +182,14 @@ Sans `--install`, le build s'arrête après les paquets ; l'installation se fait
 
 Le build affiche 6 étapes (détail plus bas) et écrit tout dans `logs/build-<date>_<heure>.log` (dans le
 dépôt). À la fin, il liste les paquets produits dans `/usr/src/build/sky1-kernel/` :
-`linux-image-7.2.12-sky1-custom_7.2.12-<n>_arm64.deb`, `linux-headers-…`, `linux-image-…-dbg` (sauf
+`linux-image-7.2.13-sky1-custom_7.2.13-<n>_arm64.deb`, `linux-headers-…`, `linux-image-…-dbg` (sauf
 `--no-dbg`) et `linux-libc-dev` (**à ne pas installer** : il remplacerait celui d'Ubuntu). Le numéro
 `<n>` augmente à chaque build dans le même arbre et repart à 1 sur un arbre neuf.
 
 ### 5. Installer (si le build a été lancé sans `--install`)
 
 ```bash
-sudo install/install.sh --kernel 7.2.12-stable
+sudo install/install.sh --kernel 7.2.13-stable
 ```
 
 | Option d'`install.sh` | Effet |
@@ -202,8 +202,8 @@ sudo install/install.sh --kernel 7.2.12-stable
 
 **Avant de redémarrer**, contrôler que l'entrée Sky1 existe et vient en premier :
 ```bash
-grep -n "^menuentry" /boot/grub/grub.cfg | head -3     # 1re ligne : « Sky1 Orange Pi 6 Plus - 7.2.12-sky1-custom (GPU+NPU) »
-ls /boot/vmlinuz-7.2.12-sky1-custom /boot/initrd.img-7.2.12-sky1-custom /boot/dtb/
+grep -n "^menuentry" /boot/grub/grub.cfg | head -3     # 1re ligne : « Sky1 Orange Pi 6 Plus - 7.2.13-sky1-custom (GPU+NPU) »
+ls /boot/vmlinuz-7.2.13-sky1-custom /boot/initrd.img-7.2.13-sky1-custom /boot/dtb/
 ```
 
 ### 6. Redémarrer et vérifier
@@ -217,7 +217,7 @@ Sky1 sont aussi envoyés sur la console série `ttyAMA2` (115200 bauds).
 
 Une fois sur le bureau :
 ```bash
-uname -r                                # 7.2.12-sky1-custom
+uname -r                                # 7.2.13-sky1-custom
 ./diagnostics/check-system.sh           # GPU, CPU, PCIe/NVMe, températures…
 journalctl -k -b -p warning             # avertissements du noyau
 ```
@@ -231,8 +231,8 @@ déconnexion ne suffit pas.
 |---|---|
 | La compilation a échoué (erreur corrigée depuis) | `sudo ./bookworm-sky1-build.sh --skip-download --skip-patches --skip-config --install` |
 | Changer une option de config et recompiler | modifier le track ou `board.conf`, puis `sudo ./bookworm-sky1-build.sh --skip-download --install` |
-| Repartir de zéro (nouvelle série de patches, arbre douteux) | `sudo rm -rf /usr/src/build/sky1-kernel/linux-7.2.12` puis `sudo ./bookworm-sky1-build.sh --skip-download --install` |
-| Réinstaller le même noyau / mettre à jour les réglages seuls | `sudo install/install.sh --kernel 7.2.12-stable` |
+| Repartir de zéro (nouvelle série de patches, arbre douteux) | `sudo rm -rf /usr/src/build/sky1-kernel/linux-7.2.13` puis `sudo ./bookworm-sky1-build.sh --skip-download --install` |
+| Réinstaller le même noyau / mettre à jour les réglages seuls | `sudo install/install.sh --kernel 7.2.13-stable` |
 
 Les sources patchées portent le marqueur `.sky1-patched` : une relance ne réapplique jamais les
 patches sur un arbre déjà patché (ils ne sont pas réappliquables) ; pour repatcher, supprimer l'arbre.
@@ -248,7 +248,7 @@ Avant de retirer le dernier noyau Sky1, démarrer sur le noyau Ubuntu. Retirer l
 le méta-paquet `linux-image-sky1` qui en dépend (voir [rester à jour](#-après-linstallation--rester-à-jour)).
 
 ### Pour comprendre : ce que fait le build (`bookworm-sky1-build.sh`)
-1. télécharge `linux-7.2.12.tar.xz` depuis kernel.org et l'extrait ;
+1. télécharge `linux-7.2.13.tar.xz` depuis kernel.org et l'extrait ;
 2. applique la **série Sky1** du dépôt (`patches/sky1-7.2/`, 49 patches) en **mode strict** (aucun fuzz) ;
 3. applique les **correctifs locaux** `patches/fixes/9xxx-*.patch` ;
 4. applique les **fixes DTS / pilotes** `patches/fixes/*.py` (slot PCIe vide, zones thermiques…) ;
@@ -258,7 +258,7 @@ le méta-paquet `linux-image-sky1` qui en dépend (voir [rester à jour](#-aprè
 6. compile et crée les paquets, puis lance `install/install.sh` avec `--install`.
 
 Les sources patchées sont marquées `.sky1-patched` : une relance ne repatche pas. Pour repartir de zéro,
-supprimer `/usr/src/build/sky1-kernel/linux-7.2.12`.
+supprimer `/usr/src/build/sky1-kernel/linux-7.2.13`.
 
 ### Pour comprendre : ce que fait l'installation (`install/install.sh`)
 1. construit et installe le paquet de réglages **`bookworm-sky1-settings`**
@@ -321,10 +321,12 @@ Le noyau Ubuntu stock reste installé et garde son entrée GRUB : c'est le secou
 
 | Track | Base | Statut |
 |-------|------|--------|
-| `7.2.12-stable` | Linux 7.2.12 (stable maintenue kernel.org) | ✅ **Par défaut, validé le 23 octobre 2026** |
+| `7.2.13-stable` | Linux 7.2.13 (stable maintenue kernel.org) | ✅ **Par défaut, validé le 28 octobre 2026** |
+| `7.2.12-stable` | Linux 7.2.12 | Précédent, gardé en secours (validé le 23 octobre 2026) |
 
-Les mises à jour stables de kernel.org sont suivies : 7.2.12 est sorti le 21 octobre 2026, son track
-a été validé le 23 octobre (série Sky1 inchangée : aucun fichier commun avec les correctifs de 7.2.12)
+Les mises à jour stables de kernel.org sont suivies : 7.2.13 est sorti le 26 octobre 2026, son track
+a été validé le 28 octobre (série Sky1 inchangée : seulement deux fichiers en commun avec les correctifs
+de 7.2.13, sans effet sur la série)
 et publié sur le dépôt APT BOOKWORM ([rester à jour](#-après-linstallation--rester-à-jour)).
 Première version Ubuntu : 7.2.11, validée le 16 octobre 2026.
 
@@ -469,7 +471,7 @@ trouvée). Depuis le noyau **7.2.12-2** (patch 0049), le GPU n'est plus perdu : 
 par sa ligne de reset et relance son firmware (`Sky1: GPU recovered after a reset through its reset line`
 dans `journalctl -k`). Le noyau **7.2.12-3** (0049 v2) corrige une panique du noyau constatée une fois
 pendant cette remise à zéro (une application qui libérait sa mémoire GPU au même moment) : **mettez à jour
-vers 7.2.12-3** (`sudo apt upgrade` avec le dépôt APT BOOKWORM). Selon ce que le bureau affichait,
+vers 7.2.12-3 ou plus récent** (`sudo apt upgrade` avec le dépôt APT BOOKWORM). Selon ce que le bureau affichait,
 gnome-shell recrée son contexte graphique (la session continue) ou plante (retour à l'écran de connexion,
 applications ouvertes fermées) ; dans les deux cas l'accélération matérielle revient sans redémarrer. Les
 lecteurs vidéo ouverts au moment du blocage s'arrêtent en général. Si cela vous arrive, notez l'heure et ce
@@ -884,7 +886,7 @@ bookworm-sky1-kernel-ubuntu/
 ├── config/
 │   ├── board.conf                # carte : cmdline, modules, debug info
 │   ├── inject-sky1-config.sh     # injection de la config Sky1 dans la config Ubuntu
-│   ├── kernels/7.2.12-stable.conf  # track : version, FORCE_BUILTIN/DISABLED, correctifs
+│   ├── kernels/7.2.13-stable.conf  # track : version, FORCE_BUILTIN/DISABLED, correctifs
 │   ├── distros/                  # versions d'Ubuntu pour l'ISO (26.10, 26.04.1)
 │   ├── sky1/config.sky1-next     # config Sky1 de référence (copie linux-sky1)
 │   ├── udev/                     # USB-C et GPU : pas de veille runtime
@@ -919,8 +921,8 @@ bookworm-sky1-kernel-ubuntu/
 
 ## 📊 Performances GPU
 
-Avec les réglages actuels (track `7.2.12-stable`, gouverneur réglé), **glmark2-es2-wayland ≈ 2880** en
-HDMI seul (2916 sur 7.2.12) (détail dans les deux tableaux suivants). Mesures de départ, avec la config d'Ubuntu d'origine :
+Avec les réglages actuels (track `7.2.13-stable`, gouverneur réglé), **glmark2-es2-wayland ≈ 2880** en
+HDMI seul (2916 sur 7.2.12, 2855 sur 7.2.13) (détail dans les deux tableaux suivants). Mesures de départ, avec la config d'Ubuntu d'origine :
 Ubuntu 26.10, noyau 7.2.11-sky1-custom, Mesa 26.2.4 (panfrost GLES 3.1 / panvk Vulkan 1.4),
 session GNOME Wayland (HDMI 4K + DP 1440p), le 2026-10-16 :
 
@@ -947,7 +949,7 @@ l'horloge et de la préemption du noyau Ubuntu (1000 Hz, `NO_HZ_FULL`, préempti
 | + `init_on_alloc=0 hardened_usercopy=off` (au boot) | ~2561 |
 | tous les durcissements Ubuntu coupés (config Gentoo) | ~2645 |
 
-Le track `7.2.12-stable` prend l'horloge et la préemption Gentoo et coupe UBSAN (sans coût, outil de
+Le track `7.2.13-stable` prend l'horloge et la préemption Gentoo et coupe UBSAN (sans coût, outil de
 détection de bugs). **Les autres durcissements Ubuntu sont gardés** : ils coûtent ~5 % au total.
 Qui préfère ~2 % de plus contre un peu de sécurité peut ajouter `init_on_alloc=0 hardened_usercopy=off`
 à la ligne `linux` de l'entrée GRUB (`randomize_kstack_offset=off` n'apporte rien).
