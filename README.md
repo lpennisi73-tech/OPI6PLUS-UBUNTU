@@ -475,6 +475,16 @@ applications ouvertes fermées) ; dans les deux cas l'accélération matérielle
 lecteurs vidéo ouverts au moment du blocage s'arrêtent en général. Si cela vous arrive, notez l'heure et ce
 que vous faisiez.
 
+### Redémarrages brutaux : rares, sans trace (firmware)
+La carte peut redémarrer d'un coup, sans aucun message : rien dans `journalctl -b -1`, pas de vidage
+kdump dans `/var/crash`, rien non plus sur la console série. Trois cas en deux semaines de tests (pendant
+une compilation du noyau, au repos, et pendant une machine virtuelle KVM avec deux vidéos), sans lien
+avec la température, la mémoire, le GPU ni l'alimentation (constaté avec deux chargeurs différents).
+Comme rien n'est écrit, ni par le noyau ni par le firmware, la remise à zéro vient du firmware ou du
+matériel de la carte : **pas de correctif possible côté noyau**, et CIX ne publie pas de mise à jour du
+BIOS à ce jour. La carte redémarre normalement ensuite. Pensez à enregistrer votre travail régulièrement
+pendant les tâches longues.
+
 ### Autres
 - **Températures** : le firmware refuse d'activer les capteurs SCMI (`Error enabling sensor … err=-2`) :
   lecture possible (`sensors`), mais pas de zones thermiques ni de limitation par le noyau.

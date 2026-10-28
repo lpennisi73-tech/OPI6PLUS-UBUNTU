@@ -471,6 +471,15 @@ repository). Depending on what the desktop was showing, gnome-shell either recre
 acceleration comes back without rebooting. Video players open at the time of the hang usually stop. If it
 happens to you, note the time and what you were doing.
 
+### Sudden reboots: rare, without any trace (firmware)
+The board can reboot all at once, without any message: nothing in `journalctl -b -1`, no kdump dump in
+`/var/crash`, nothing on the serial console either. Three cases in two weeks of testing (during a kernel
+build, at idle, and while running a KVM virtual machine with two videos), unrelated to temperature,
+memory, the GPU or the power supply (seen with two different chargers). Since nothing is written, neither
+by the kernel nor by the firmware, the reset comes from the board's firmware or hardware: **no fix is
+possible on the kernel side**, and CIX has not released a BIOS update so far. The board then boots
+normally. Save your work regularly during long tasks.
+
 ### Other
 - **Temperatures**: the firmware refuses to enable the SCMI sensors (`Error enabling sensor … err=-2`):
   they can be read (`sensors`), but there are no thermal zones and no kernel throttling.
