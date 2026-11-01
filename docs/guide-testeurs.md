@@ -11,15 +11,15 @@ marchent aussi sur **d'autres cartes, écrans, disques et alimentations**.
 
 | Fichier | Ubuntu | SHA256 |
 |---|---|---|
-| `ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261026.iso` | 26.10 | `c36a461013e897b82ab37f894729c84cbd111d97a986f280c6e3c9a5ba74ebaa` |
-| `ubuntu-26.04.1-bookworm-sky1-orangepi6plus-arm64-20261026.iso` | 26.04.1 LTS | `e9027782b8db7329e15f82162021344ea9b15fc45ddf9669b8faa7d48e601b33` |
+| `ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso` | 26.10 | `5bc36cec73cbcd32fbbe9cc1844cf789f094d81b5b581eeb5e1026c2575cef65` |
+| `ubuntu-26.04.1-bookworm-sky1-orangepi6plus-arm64-20261101.iso` | 26.04.1 LTS | `860c13a731fb6dff02b6d8ca75be04a538012cb94af5f04963bad6e5b147ef92` |
 
-Noyau 7.2.12-sky1-custom (paquet 7.2.12-3), réglages `bookworm-sky1-settings` 1.1.38.
+Noyau 7.3.1-sky1-custom (paquet 7.3.1-1), réglages `bookworm-sky1-settings` 1.1.38.
 
 Vérifier le fichier reçu (le résultat doit être identique à la colonne SHA256) :
 
 ```bash
-sha256sum ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261026.iso
+sha256sum ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
 ```
 
 ## 1. Préparer une clé USB (8 Go ou plus)
@@ -28,7 +28,7 @@ sha256sum ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261026.iso
 
 ```bash
 lsblk -o NAME,SIZE,MODEL,TRAN          # la clé : TRAN = usb (souvent sda ou sdb)
-ISO=ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261026.iso
+ISO=ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
 sudo umount /dev/sdX?*                 # sdX = la clé
 sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
 sudo cmp -n "$(stat -c %s "$ISO")" "$ISO" /dev/sdX && echo "clé identique à l'ISO"

@@ -10,8 +10,11 @@
 # noyau, apt upgrade suit. bookworm-sky1-settings le recommande (systèmes déjà installés).
 # Les anciens noyaux restent installés (secours dans GRUB) : à retirer à la main.
 #
-# Usage: ./build-meta-deb.sh [--out <dir>] <linux-image-<kver>_*.deb> [<linux-headers-<kver>_*.deb>]
+# Usage: ./build-meta-deb.sh [--out <dir>] [--version <v>] <linux-image-<kver>_*.deb> [<linux-headers-<kver>_*.deb>]
 #        (défaut de --out : dossier du paquet noyau). Affiche le chemin de chaque .deb produit.
+#        --version : version du méta-paquet (défaut : celle du noyau). Sert à revenir à un
+#        noyau plus ancien : apt ne redescend jamais, le méta-paquet doit donc avoir une
+#        version plus haute que celui publié (ex. 7.3.1-1+7.2.13 pour revenir à 7.2.13).
 # =============================================================================
 
 set -euo pipefail
@@ -20,11 +23,13 @@ RED='\033[0;31m'; NC='\033[0m'
 die() { echo -e "${RED}ERREUR: $1${NC}" >&2; exit 1; }
 
 OUT_DIR=""
+META_VERSION=""
 DEBS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --out) OUT_DIR="$2"; shift 2 ;;
-        --help|-h) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --version) META_VERSION="$2"; shift 2 ;;
+        --help|-h) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) die "Option inconnue: $1" ;;
         *) DEBS+=("$1"); shift ;;
     esac
@@ -32,12 +37,15 @@ done
 [[ ${#DEBS[@]} -ge 1 ]] || die "paquet linux-image-<kver> attendu (--help)"
 
 build_meta() {    # build_meta <paquet noyau .deb> <linux-image|linux-headers>
-    local deb="$1" kind="$2" pkg version kver meta stage out what
+    local deb="$1" kind="$2" pkg version kver meta stage out what mver
     [[ -f "$deb" ]] || die "$deb introuvable"
     pkg=$(dpkg-deb -f "$deb" Package)
     version=$(dpkg-deb -f "$deb" Version)
     [[ "$pkg" == "$kind"-*-sky1-* ]] || die "$deb : $pkg n'est pas un paquet $kind Sky1"
     kver="${pkg#"$kind"-}"
+    mver="${META_VERSION:-$version}"
+    dpkg --compare-versions "$mver" ge "$version" \
+        || die "--version $mver plus basse que le noyau ($version)"
     meta="${kind}-sky1"
     what="Noyau"
     [[ "$kind" == linux-headers ]] && what="En-têtes du noyau"
@@ -49,7 +57,7 @@ build_meta() {    # build_meta <paquet noyau .deb> <linux-image|linux-headers>
     mkdir -p "$stage/DEBIAN" "$stage/usr/share/doc/$meta"
     cat > "$stage/DEBIAN/control" << EOF
 Package: $meta
-Version: $version
+Version: $mver
 Architecture: arm64
 Maintainer: kennytech73 <contact@bookworm-mon0.org>
 Depends: $pkg (>= $version)
@@ -62,9 +70,9 @@ Description: $what Sky1 le plus récent pour Orange Pi 6 Plus (méta-paquet)
 EOF
     printf '%s\n' "Méta-paquet BOOKWORM Sky1 : dépend de $pkg $version." \
         > "$stage/usr/share/doc/$meta/README"
-    dpkg-deb --root-owner-group -Zxz --build "$stage" "$out/${meta}_${version}_arm64.deb" >/dev/null
+    dpkg-deb --root-owner-group -Zxz --build "$stage" "$out/${meta}_${mver}_arm64.deb" >/dev/null
     rm -rf "$stage"
-    echo "$out/${meta}_${version}_arm64.deb"
+    echo "$out/${meta}_${mver}_arm64.deb"
 }
 
 build_meta "${DEBS[0]}" linux-image

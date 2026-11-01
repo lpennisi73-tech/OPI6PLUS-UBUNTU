@@ -682,7 +682,7 @@ celle téléchargée (par exemple dans `~/Téléchargements/`).
    ```
 3. Écrire l'ISO, puis vider les tampons :
    ```bash
-   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261023.iso
+   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
    sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
    sync
    ```

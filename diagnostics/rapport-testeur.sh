@@ -19,7 +19,7 @@
 
 set -u
 
-VERSION="1.0"
+VERSION="1.1"
 NOTE=""
 
 while [[ $# -gt 0 ]]; do
@@ -50,9 +50,9 @@ trap 'rm -rf "${WORK}"' EXIT
 
 # --- Anonymisation -----------------------------------------------------------
 # Mots retirés : nom de la machine et comptes humains (uid >= 1000), sauf les
-# noms génériques du live (ubuntu…), qui ne disent rien de la personne et dont
+# noms génériques du live (ubuntu, « Live session user »…), qui ne disent rien de la personne et dont
 # le remplacement rendrait les journaux illisibles.
-GENERIC="ubuntu|root|live|user|gdm|localhost|orangepi|orangepi6plus|admin|test|bookworm|sky1|linux"
+GENERIC="ubuntu|root|live|session|user|gdm|localhost|orangepi|orangepi6plus|admin|test|bookworm|sky1|linux"
 SECRETS=()
 add_secret() {
     local w="$1"
@@ -120,7 +120,12 @@ fi
 
 # --- Système ------------------------------------------------------------------
 LIVE="non"
-grep -qw 'boot=casper' /proc/cmdline && LIVE="oui"
+# Le live Ubuntu récent ne met plus « boot=casper » : on regarde aussi le chemin
+# du noyau (/casper/) et la racine en overlay avec /cdrom monté.
+if grep -qE '(^| )boot=casper( |$)|BOOT_IMAGE=/casper/' /proc/cmdline \
+   || { [[ "$(findmnt -n -o FSTYPE / 2>/dev/null)" == overlay ]] && mountpoint -q /cdrom; }; then
+    LIVE="oui"
+fi
 {
     echo "Session live      : ${LIVE}"
     echo "Noyau             : $(uname -r) ($(uname -v))"
