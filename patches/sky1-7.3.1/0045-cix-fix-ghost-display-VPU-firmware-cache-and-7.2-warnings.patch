@@ -1,0 +1,134 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Fri, 16 Oct 2026 16:30:00 +0200
+Subject: [PATCH] cix: fix ghost display, VPU firmware cache and 7.2 warnings
+
+- drm/cix linlon-dp: remove the firmware framebuffer (simpledrm) before
+  registering the DRM device. It stayed registered as a second,
+  non-existent "Unknown" display in GNOME.
+
+- media/cix amvx: when a codec firmware failed to load (e.g. missing
+  h264dec.fwb), the failed fw_bin stayed in the cache and new sessions
+  were queued on its event list. Nobody ever notified them: stream on
+  timed out, and the session (which embeds the event) was freed while
+  still linked, corrupting fw_bin->event_list ("list_add corruption" in
+  mvx_fw_cache_get). Failed binaries are now skipped by the lookup (a new
+  load is attempted, e.g. after the firmware is installed) and
+  mvx_fw_cache_get() returns -ENOENT instead of queueing the event.
+
+- misc/armchina-npu: drop IRQF_ONESHOT, there is no threaded handler
+  (WARN in __setup_irq since 7.2).
+
+- watchdog/sky1: alloc_workqueue() needs WQ_PERCPU or WQ_UNBOUND since
+  7.2 (WARN in __alloc_workqueue); keep the previous per-cpu behaviour.
+
+[added for Linux 7.2 by BOOKWORM]
+---
+ 4 files changed, 34 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c b/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c
+index f5885b3c2f195961cdf719cd28035e8d26888a07..0f9e77ec7bed07832a80b1d14a1b18d786ece366 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c
++++ b/drivers/gpu/drm/cix/linlon-dp/linlondp_kms.c
+@@ -4,6 +4,7 @@
+  * ALL RIGHTS RESERVED
+  *
+  */
++#include <linux/aperture.h>
+ #include <linux/component.h>
+ #include <linux/interrupt.h>
+ 
+@@ -334,6 +335,14 @@ struct linlondp_kms_dev *linlondp_kms_attach(struct linlondp_dev *mdev)
+ 	struct drm_device *drm;
+ 	int err;
+ 
++	/*
++	 * Remove the firmware framebuffer (simpledrm/efifb) left by the boot
++	 * loader, or it stays registered as a second, non-existent display.
++	 */
++	err = aperture_remove_all_conflicting_devices(linlondp_kms_driver.name);
++	if (err)
++		return ERR_PTR(err);
++
+ 	kms = devm_drm_dev_alloc(mdev->dev, &linlondp_kms_driver,
+ 				 struct linlondp_kms_dev, base);
+ 	if (IS_ERR(kms))
+diff --git a/drivers/media/platform/cix/if/mvx_firmware_cache.c b/drivers/media/platform/cix/if/mvx_firmware_cache.c
+index f9a15dd8e67966123393c0dcc4495bdf2fb65497..3e40cf3fdf26738c8b08d1ff83477080d04c5d77 100755
+--- a/drivers/media/platform/cix/if/mvx_firmware_cache.c
++++ b/drivers/media/platform/cix/if/mvx_firmware_cache.c
+@@ -500,6 +500,19 @@ static struct mvx_fw_bin *fw_bin_create(struct mvx_fw_cache *cache,
+     return ERR_PTR(ret);
+ }
+ 
++/**
++ * fw_bin_load_failed() - The firmware load has completed with an error.
++ *
++ * NULL means the load is still in progress, ERR_PTR() that it failed.
++ */
++static bool fw_bin_load_failed(struct mvx_fw_bin *fw_bin)
++{
++    if (fw_bin->securevideo != false)
++        return IS_ERR(fw_bin->secure.securefw);
++
++    return IS_ERR(fw_bin->nonsecure.fw);
++}
++
+ /**
+  * fw_bin_get() - Get reference to firmware binary.
+  *
+@@ -526,6 +539,7 @@ static struct mvx_fw_bin *fw_bin_get(struct mvx_fw_cache *cache,
+         if (tmp->format == format && tmp->dir == dir &&
+             hwvercmp(&tmp->hw_ver, hw_ver) == 0 &&
+             tmp->securevideo == securevideo &&
++            !fw_bin_load_failed(tmp) &&
+             atomic_read(&tmp->flush_cnt) ==
+             atomic_read(&cache->flush_cnt)) {
+             fw_bin = tmp;
+@@ -717,6 +731,14 @@ int mvx_fw_cache_get(struct mvx_fw_cache *cache,
+            IS_ERR_OR_NULL(fw_bin->nonsecure.fw) == false) {
+         mutex_unlock(&fw_bin->mutex);
+         event->fw_bin_ready(fw_bin, event->arg, true);
++    } else if (fw_bin_load_failed(fw_bin)) {
++        /*
++         * The load already failed: nobody would ever notify this event.
++         * Let the caller fail the stream on instead of waiting.
++         */
++        mutex_unlock(&fw_bin->mutex);
++        mvx_fw_cache_put(cache, fw_bin);
++        return -ENOENT;
+     } else {
+         list_add(&event->head, &fw_bin->event_list);
+         mutex_unlock(&fw_bin->mutex);
+diff --git a/drivers/misc/armchina-npu/aipu_irq.c b/drivers/misc/armchina-npu/aipu_irq.c
+index a4bad6e2f3ab3fd27afd1c8c61ffd2b76dcb7efc..ade9c6cc1d1ac038ebcd66d6a3fc7994672a77de 100755
+--- a/drivers/misc/armchina-npu/aipu_irq.c
++++ b/drivers/misc/armchina-npu/aipu_irq.c
+@@ -63,12 +63,9 @@ struct aipu_irq_object *aipu_create_irq_object(struct device *dev, u32 irqnum, v
+ 
+ 	INIT_WORK(&irq_obj->work, aipu_irq_handler_bottom_half);
+ 
+-	/**
+-	 * Flag IRQF_ONESHOT is used when sharing interrupts with other devices using thread_irq.
+-	 * Remove it if you have no such a usage scenario.
+-	 */
++	/* No threaded handler: IRQF_ONESHOT is meaningless (and warns since 7.2). */
+ 	ret = request_irq(irqnum, aipu_irq_handler_upper_half,
+-			  IRQF_ONESHOT | IRQF_SHARED | IRQF_PROBE_SHARED,
++			  IRQF_SHARED | IRQF_PROBE_SHARED,
+ 			  description, irq_obj->dev);
+ 	if (ret) {
+ 		dev_err(dev, "request_irq failed: irqnum %u, ret %d", irqnum, ret);
+diff --git a/drivers/watchdog/sky1_wdt.c b/drivers/watchdog/sky1_wdt.c
+index 0c40e2b5c787cc22b664e6547b3cec79fba19168..82634a35674a7595bdbdc2ef9e13d32d7d324692 100644
+--- a/drivers/watchdog/sky1_wdt.c
++++ b/drivers/watchdog/sky1_wdt.c
+@@ -298,7 +298,7 @@ static int sky1_wdt_probe(struct platform_device *pdev)
+ 		wdt->kick_time = ((wdd->timeout >> 1) - 1) / WDG_FEED_MOMENT_ADJUST; /* minus 1 from the total */
+ 
+ 	INIT_DELAYED_WORK(&wdt->sky1_wdt_delayed_work, sky1_wdt_mond);
+-	wdt->sky1_wdt_wq = alloc_workqueue("wdt_wq", WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
++	wdt->sky1_wdt_wq = alloc_workqueue("wdt_wq", WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_PERCPU, 1);
+ 	if (wdt->sky1_wdt_wq == NULL) {
+ 		dev_err(dev, "alloc workqueue failed\n");
+ 		ret = -ENOMEM;

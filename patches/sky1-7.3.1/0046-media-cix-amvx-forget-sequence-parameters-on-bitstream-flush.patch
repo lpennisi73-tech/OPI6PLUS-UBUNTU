@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Mon, 19 Oct 2026 08:00:00 +0200
+Subject: [PATCH] media: cix: amvx: forget sequence parameters on bitstream flush
+
+Flushing the bitstream (input) port makes the decoder firmware drop the
+sequence parameters it has parsed. The driver kept received_seq_param
+set, so when the capture queue was started next, flush_and_qbufs() sent
+an output flush to the running firmware, which rejects it:
+
+  Firmware rsp: Error. code=3, message=V6/V8-H264DEC: Output flush only
+  allowed when stopped, or after response _SEQUENCE_PARAMETERS.
+
+STREAMON(CAPTURE) then failed with -EINVAL and the GStreamer v4l2 decoder
+stopped producing frames. This happens when a player seeks while the
+first source change is being handled, e.g. GNOME Showtime resuming a
+video at its last position.
+
+Clear received_seq_param when the input port is flushed, so the output
+flush is only sent when the firmware accepts it.
+
+Reproduced 3/3 with a flushing seek 10 ms after PAUSED (v4l2h264dec,
+1080p H.264); fixed 3/3, later seeks unchanged.
+---
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/media/platform/cix/if/mvx_session.c b/drivers/media/platform/cix/if/mvx_session.c
+index b0754b803f4d8b342855a893917d22ffb0a95e81..8affb2d9f69efac22e93c86329c7a1c572c27bea 100755
+--- a/drivers/media/platform/cix/if/mvx_session.c
++++ b/drivers/media/platform/cix/if/mvx_session.c
+@@ -4041,6 +4041,16 @@ int mvx_session_streamoff(struct mvx_session *session,
+             if (dir == MVX_DIR_OUTPUT) {
+                 port->hold_off_buffer_done = false;
+                 port->in_port_changing = false;
++            } else {
++                /*
++                 * Flushing the bitstream port makes the firmware forget the
++                 * sequence parameters: it then refuses an output flush until
++                 * it has parsed them again ("Output flush only allowed when
++                 * stopped, or after response _SEQUENCE_PARAMETERS"). Without
++                 * this, a seek during the first source change (players that
++                 * resume at the last position) made STREAMON(CAPTURE) fail.
++                 */
++                session->port[MVX_DIR_OUTPUT].received_seq_param = false;
+             }
+         }
+     }
