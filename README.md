@@ -90,8 +90,8 @@ sudo reboot
 ```
 
 La procédure détaillée suit. Pour installer Ubuntu directement avec le noyau Sky1, des ISO prêtes à
-l'emploi seront sur [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)
-**à partir du lundi 2 novembre 2026** (voir [ISO d'installation](#-iso-dinstallation)).
+l'emploi sont sur [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)
+(voir [ISO d'installation](#-iso-dinstallation)).
 
 ---
 
@@ -565,10 +565,27 @@ Les sessions GNOME existantes gardent leurs propres réglages (Paramètres → R
 > (licences des firmwares : voir `firmware/README.md`).
 
 **ISO prêtes à l'emploi : [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
-avec leur fichier `.sha256`, **disponibles à partir du lundi 2 novembre 2026** (avant cette date, elles
-ne sont pas encore en ligne). Après le téléchargement, vérifier l'ISO avant de l'écrire sur une clé :
+avec leur fichier `.sha256` et leur signature GPG `.asc`. Pour l'instant, deux séries d'ISO sont en ligne,
+chacune en Ubuntu 26.10 et 26.04.1 LTS :
+
+| ISO | Noyau Sky1 | Conseil |
+|---|---|---|
+| `…-20261101.iso` | 7.3.1 | **recommandée** (noyau actuel) |
+| `…-20261026.iso` | 7.2.12 | précédente, gardée au choix pour l'instant ; elle sera retirée plus tard |
+
+Les deux sont testées (live + installation). Quelle que soit l'ISO choisie, une fois le
+[dépôt APT](#-après-linstallation--rester-à-jour) ajouté, `apt upgrade` passe le système au noyau le plus
+récent publié par ce projet.
+
+Après le téléchargement, vérifier l'ISO avant de l'écrire sur une clé :
 ```bash
 sha256sum -c ubuntu-*-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256    # doit afficher « OK »
+```
+Facultatif, vérifier aussi la signature avec la clé publique donnée sur la même page :
+```bash
+gpg --import kennytech73_public_key.asc
+gpg --verify ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso.asc \
+             ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso   # « Bonne signature »
 ```
 puis passer directement à l'étape 4 (écrire l'ISO sur une clé). Les étapes 1 à 3 servent à construire
 l'ISO soi-même.

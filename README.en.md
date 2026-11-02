@@ -92,9 +92,9 @@ sudo reboot
 ./diagnostics/check-system.sh               # after the reboot
 ```
 
-The detailed procedure follows. To install Ubuntu directly with the Sky1 kernel, ready-to-use ISOs will be
+The detailed procedure follows. To install Ubuntu directly with the Sky1 kernel, ready-to-use ISOs are
 on [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)
-**from Monday 2 November 2026** (see [Installation ISO](#-installation-iso)).
+(see [Installation ISO](#-installation-iso)).
 
 ---
 
@@ -559,10 +559,27 @@ Existing GNOME sessions keep their own settings (Settings → Region & Language,
 > (firmware licences: see `firmware/README.md`).
 
 **Ready-to-use ISOs: [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
-with their `.sha256` file, **available from Monday 2 November 2026** (they are not online before that
-date). After downloading, check the ISO before writing it to a USB stick:
+with their `.sha256` file and their GPG signature `.asc`. For now, two series of ISOs are online, each
+in Ubuntu 26.10 and 26.04.1 LTS:
+
+| ISO | Sky1 kernel | Advice |
+|---|---|---|
+| `…-20261101.iso` | 7.3.1 | **recommended** (current kernel) |
+| `…-20261026.iso` | 7.2.12 | previous, kept as an option for now; it will be removed later |
+
+Both are tested (live + installation). Whichever ISO you choose, once the
+[APT repository](#-after-installation-staying-up-to-date) is added, `apt upgrade` moves the system to the
+latest kernel published by this project.
+
+After downloading, check the ISO before writing it to a USB stick:
 ```bash
 sha256sum -c ubuntu-*-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256    # must print "OK"
+```
+Optionally, also check the signature with the public key given on the same page:
+```bash
+gpg --import kennytech73_public_key.asc
+gpg --verify ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso.asc \
+             ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso   # "Good signature"
 ```
 then go straight to step 4 (write the ISO to a USB stick). Steps 1 to 3 are for building the ISO
 yourself.
