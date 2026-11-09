@@ -306,6 +306,7 @@ Où trouver les fichiers (liste complète : `dpkg -L bookworm-sky1-settings`) :
 | VLC (sortie ALSA) | `/usr/libexec/bookworm-sky1/sky1-vlc-aout`, service utilisateur `bookworm-sky1-vlc-aout` | dans VLC (*Préférences → Audio*) : le choix n'est plus jamais touché |
 | kdump (noyau de secours) | `/usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf` | `KDUMP_CMDLINE_APPEND` dans `/etc/default/kdump-tools` |
 | geoclue (sans libproxy) | `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` | même nom dans `/etc/systemd/system/geoclue.service.d/` |
+| Balayage direct de mutter (26.04.1 seulement) | `/usr/lib/systemd/user-environment-generators/90-bookworm-sky1-mutter-scanout` | `MUTTER_DEBUG_PAINT=` dans `~/.config/environment.d/` (valeur vide : balayage direct gardé) |
 | GRUB, cpufreq, DTB | `/etc/grub.d/07_sky1`, `/etc/default/bookworm-sky1`, `/etc/default/sky1-cpufreq`, `/etc/kernel/post*.d/zz-bookworm-sky1-dtb` | ces fichiers directement (gardés lors des mises à jour) |
 
 `/etc/environment.d/` est donc normalement vide de réglages Sky1. Pour vérifier qu'ils sont actifs :
@@ -372,6 +373,7 @@ l'historique git).
 | Trace noyau à la lecture vidéo | firmwares VPU absents + bug du pilote sur ce cas (mémoire libérée réutilisée) | paquet `cix-vpu-firmware` + patch `0045` |
 | Lecteur vidéo GNOME : image verte figée | affichage des images du VPU dans GTK4 | décodage CPU pour le bureau (`config/environment.d/`) |
 | Showtime se ferme au passage en plein écran (`drmPrimeHandleToFD() failed`, `Error 9`) | l'offload graphique de GTK4 exporte un buffer GPU privé, que panthor refuse | `GDK_DISABLE=offload` (`config/environment.d/90-sky1-gtk-offload.conf`) |
+| Jeux qui clignotent en plein écran sur 26.04.1 (RTCW sous Xwayland) | mutter 50.1 envoie le tampon du jeu tel quel au plan d'affichage (balayage direct) ; fenêtré ou avec Alt+Tab, il recompose et le défaut disparaît ; mutter 51 (26.10) n'a pas le défaut | `MUTTER_DEBUG_PAINT=disable-direct-scanout`, posé seulement si mutter < 51 (`90-bookworm-sky1-mutter-scanout`) |
 | Vidéo qui saccade à l'ouverture des notifications ou du menu système | en OpenGL bureau, gnome-shell envoie ses images BGRA en RGBA8 et Mesa convertit chaque pixel sur le processeur | gnome-shell en OpenGL ES : `COGL_DRIVER=gles2` (`config/environment.d/90-sky1-mutter-gles.conf`) |
 | Son haché dans VLC | sorties DP/HDMI à 85 ms par bloc, tampons des clients Pulse trop petits | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC en sortie ALSA, voir plus bas) |
 | Entrée GRUB du 7.0 avant celle du 7.2 | tri alphabétique de `/etc/grub.d` | `/etc/grub.d/07_sky1` trie les noyaux Sky1 par version |

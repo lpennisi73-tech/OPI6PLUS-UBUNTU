@@ -307,6 +307,7 @@ Where to find the files (full list: `dpkg -L bookworm-sky1-settings`):
 | VLC (ALSA output) | `/usr/libexec/bookworm-sky1/sky1-vlc-aout`, user service `bookworm-sky1-vlc-aout` | in VLC (*Preferences → Audio*): your choice is never touched again |
 | kdump (crash kernel) | `/usr/lib/systemd/system/kdump-tools.service.d/90-bookworm-sky1.conf` | `KDUMP_CMDLINE_APPEND` in `/etc/default/kdump-tools` |
 | geoclue (without libproxy) | `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` | same name in `/etc/systemd/system/geoclue.service.d/` |
+| mutter direct scanout (26.04.1 only) | `/usr/lib/systemd/user-environment-generators/90-bookworm-sky1-mutter-scanout` | `MUTTER_DEBUG_PAINT=` in `~/.config/environment.d/` (empty value: direct scanout kept) |
 | GRUB, cpufreq, DTB | `/etc/grub.d/07_sky1`, `/etc/default/bookworm-sky1`, `/etc/default/sky1-cpufreq`, `/etc/kernel/post*.d/zz-bookworm-sky1-dtb` | these files directly (kept on upgrades) |
 
 `/etc/environment.d/` therefore normally contains no Sky1 settings. To check that they are active:
@@ -373,6 +374,7 @@ git history).
 | Kernel trace when playing a video | missing VPU firmware + driver bug in that case (use after free) | `cix-vpu-firmware` package + patch `0045` |
 | GNOME video player: frozen green picture | display of VPU frames in GTK4 | CPU decoding for the desktop (`config/environment.d/`) |
 | Showtime closes when going fullscreen (`drmPrimeHandleToFD() failed`, `Error 9`) | GTK4 graphics offload exports a private GPU buffer, which panthor refuses | `GDK_DISABLE=offload` (`config/environment.d/90-sky1-gtk-offload.conf`) |
+| Games flicker in fullscreen on 26.04.1 (RTCW under Xwayland) | mutter 50.1 hands the game's buffer straight to the display plane (direct scanout); windowed or with Alt+Tab it composites again and the flicker stops; mutter 51 (26.10) is not affected | `MUTTER_DEBUG_PAINT=disable-direct-scanout`, set only when mutter < 51 (`90-bookworm-sky1-mutter-scanout`) |
 | Video stutters when opening notifications or the system menu | in desktop OpenGL, gnome-shell uploads its BGRA images as RGBA8 and Mesa converts every pixel on the CPU | gnome-shell on OpenGL ES: `COGL_DRIVER=gles2` (`config/environment.d/90-sky1-mutter-gles.conf`) |
 | Choppy sound in VLC | DP/HDMI outputs at 85 ms per block, Pulse client buffers too small | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC on ALSA output, see below) |
 | 7.0 GRUB entry before the 7.2 one | alphabetical order of `/etc/grub.d` | `/etc/grub.d/07_sky1` sorts Sky1 kernels by version |

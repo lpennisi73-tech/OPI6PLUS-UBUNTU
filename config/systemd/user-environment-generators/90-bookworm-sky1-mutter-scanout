@@ -1,0 +1,18 @@
+#!/bin/sh
+# BOOKWORM Sky1 — mutter < 51 (Ubuntu 26.04.1, mutter 50.1) : pas de balayage direct.
+# En plein écran, mutter 50 envoie le tampon de l'application (jeu sous Xwayland :
+# RTCW) tel quel au plan d'affichage linlondp (« direct scanout ») : l'image clignote.
+# Fenêtré, ou dès qu'un élément de GNOME passe par-dessus (Alt+Tab), mutter recompose
+# et le défaut disparaît. Avec MUTTER_DEBUG_PAINT=disable-direct-scanout, plus de
+# clignotement (validé sur 26.04.1, noyau 7.3.1). mutter 51 (Ubuntu 26.10) n'a pas
+# le défaut : rien n'est posé.
+# Générateur d'environnement utilisateur : lancé au démarrage du gestionnaire de
+# session (user@UID), après environment.d ; un choix de l'utilisateur
+# (~/.config/environment.d) est gardé.
+[ -n "${MUTTER_DEBUG_PAINT+x}" ] && exit 0    # déjà défini (même vide) : choix gardé
+v=$(dpkg-query -W -f '${Version}' mutter-common 2>/dev/null) || exit 0
+[ -n "$v" ] || exit 0
+if dpkg --compare-versions "$v" lt 51~; then
+    echo "MUTTER_DEBUG_PAINT=disable-direct-scanout"
+fi
+exit 0

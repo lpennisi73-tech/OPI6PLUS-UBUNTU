@@ -109,6 +109,9 @@ mkdir -p "$R/usr/lib/modules-load.d" "$R/usr/lib/modprobe.d"
 for f in "$C"/udev/*.rules; do inst 644 "$f" "/usr/lib/udev/rules.d/$(basename "$f")"; done
 for f in "$C"/systemd/sleep.conf.d/*.conf; do inst 644 "$f" "/usr/lib/systemd/sleep.conf.d/$(basename "$f")"; done
 for f in "$C"/environment.d/*.conf; do inst 644 "$f" "/usr/lib/environment.d/$(basename "$f")"; done
+for f in "$C"/systemd/user-environment-generators/*; do
+    inst 755 "$f" "/usr/lib/systemd/user-environment-generators/$(basename "$f")"
+done
 for f in "$C"/wireplumber/*.conf; do inst 644 "$f" "/usr/share/wireplumber/wireplumber.conf.d/$(basename "$f")"; done
 for f in "$C"/alsa-card-profile/*.conf; do
     inst 644 "$f" "/usr/share/alsa-card-profile/mixer/profile-sets/$(basename "$f")"
