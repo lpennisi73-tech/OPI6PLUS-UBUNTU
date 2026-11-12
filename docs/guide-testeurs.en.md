@@ -11,15 +11,15 @@ boards, screens, disks and power supplies**.
 
 | File | Ubuntu | SHA256 |
 |---|---|---|
-| `ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso` | 26.10 | `5bc36cec73cbcd32fbbe9cc1844cf789f094d81b5b581eeb5e1026c2575cef65` |
-| `ubuntu-26.04.1-bookworm-sky1-orangepi6plus-arm64-20261101.iso` | 26.04.1 LTS | `860c13a731fb6dff02b6d8ca75be04a538012cb94af5f04963bad6e5b147ef92` |
+| `ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso` | 26.10 | `9e806479236dd550056f4a07be66f27c16497d36a4e1f4b716f7f6d57edc8051` |
+| `ubuntu-26.04.1-bookworm-sky1-orangepi6plus-arm64-20261112.iso` | 26.04.1 LTS | `96d5cba7997768f2f1b1f85c6d696dd97e50670b38c7c6bbd6dfe12b33e9c288` |
 
-Kernel 7.3.1-sky1-custom (package 7.3.1-1), `bookworm-sky1-settings` 1.1.38.
+Kernel 7.3.1-sky1-custom (package 7.3.1-2), `bookworm-sky1-settings` 1.1.39.
 
 Check the file you received (the result must match the SHA256 column):
 
 ```bash
-sha256sum ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
+sha256sum ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso
 ```
 
 ## 1. Prepare a USB stick (8 GB or more)
@@ -28,7 +28,7 @@ sha256sum ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
 
 ```bash
 lsblk -o NAME,SIZE,MODEL,TRAN          # the stick: TRAN = usb (often sda or sdb)
-ISO=ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
+ISO=ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso
 sudo umount /dev/sdX?*                 # sdX = the stick
 sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
 sudo cmp -n "$(stat -c %s "$ISO")" "$ISO" /dev/sdX && echo "stick identical to the ISO"

@@ -380,7 +380,7 @@ l'historique git).
 | Son haché dans VLC | sorties DP/HDMI à 85 ms par bloc, tampons des clients Pulse trop petits | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC en sortie ALSA, voir plus bas) |
 | Entrée GRUB du 7.0 avant celle du 7.2 | tri alphabétique de `/etc/grub.d` | `/etc/grub.d/07_sky1` trie les noyaux Sky1 par version |
 | Image en 6 bits par couleur après un rebond de l'écran au réveil (`info_format=0, force support RGB444`) | le modeset forcé après le rebond partait avant la relecture de l'EDID, que GNOME avait effacée pendant les 2 s « débranché » | `9007` relit l'EDID avant le modeset (« HPD bounce: EDID re-read, bpc=… ») |
-| Un boîtier de capture HDMI (Elgato 4K S) n'enregistre aucun son alors que l'écran branché derrière lui en a | le pilote DP écrivait à l'envers l'octet du « channel status » qui annonce la fréquence : un flux en 48 kHz était annoncé en 44,1 kHz. Les écrans ignorent cette annonce, les boîtiers de capture s'y fient | patch `0051` : octet écrit dans le bon ordre de bits (testé en 32, 44,1 et 48 kHz) ; à partir du noyau qui suivra 7.3.1-1 |
+| Un boîtier de capture HDMI (Elgato 4K S) n'enregistre aucun son alors que l'écran branché derrière lui en a | le pilote DP écrivait à l'envers l'octet du « channel status » qui annonce la fréquence : un flux en 48 kHz était annoncé en 44,1 kHz. Les écrans ignorent cette annonce, les boîtiers de capture s'y fient | patch `0051` : octet écrit dans le bon ordre de bits (testé en 32, 44,1 et 48 kHz) ; à partir du noyau 7.3.1-2 (dépôt APT, ISO du 12/11) |
 | `geoclue` en échec au démarrage (`start operation timed out`, 90 s) | interblocage dans GIO au démarrage de geoclue : le module libproxy, chargé sous le verrou des modules, attend l'initialisation que le fil principal ne peut pas finir | résolveur de proxy « dummy » pour geoclue : `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` |
 | `cros-ec-i2c 6-0076: Cannot identify the EC: error -71` à chaque démarrage | nœud EC repris de la carte de référence CIX (un portable : batterie, capot, clavier) ; aucun EC de ce type sur l'Orange Pi 6 Plus | nœud désactivé (`dts-disable-cros-ec.py`) |
 
@@ -570,15 +570,16 @@ Les sessions GNOME existantes gardent leurs propres réglages (Paramètres → R
 > (licences des firmwares : voir `firmware/README.md`).
 
 **ISO prêtes à l'emploi : [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
-avec leur fichier `.sha256` et leur signature GPG `.asc`. Pour l'instant, deux séries d'ISO sont en ligne,
+avec leur fichier `.sha256` et leur signature GPG `.asc`. Pour l'instant, trois séries d'ISO sont en ligne,
 chacune en Ubuntu 26.10 et 26.04.1 LTS :
 
 | ISO | Noyau Sky1 | Conseil |
 |---|---|---|
-| `…-20261101.iso` | 7.3.1 | **recommandée** (noyau actuel) |
-| `…-20261026.iso` | 7.2.12 | précédente, gardée au choix pour l'instant ; elle sera retirée plus tard |
+| `…-20261112.iso` | 7.3.1 (paquet 7.3.1-2, patch `0051`) | **recommandée** (noyau actuel) |
+| `…-20261101.iso` | 7.3.1 (paquet 7.3.1-1) | précédente, gardée au choix |
+| `…-20261026.iso` | 7.2.12 | ancienne, retirée vers le 16 novembre 2026 |
 
-Les deux sont testées (live + installation). Quelle que soit l'ISO choisie, une fois le
+Toutes sont testées (live + installation). Quelle que soit l'ISO choisie, une fois le
 [dépôt APT](#-après-linstallation--rester-à-jour) ajouté, `apt upgrade` passe le système au noyau le plus
 récent publié par ce projet.
 
@@ -589,8 +590,8 @@ sha256sum -c ubuntu-*-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256    # doit a
 Facultatif, vérifier aussi la signature avec la clé publique donnée sur la même page :
 ```bash
 gpg --import kennytech73_public_key.asc
-gpg --verify ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso.asc \
-             ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso   # « Bonne signature »
+gpg --verify ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso.asc \
+             ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso   # « Bonne signature »
 ```
 puis passer directement à l'étape 4 (écrire l'ISO sur une clé). Les étapes 1 à 3 servent à construire
 l'ISO soi-même.
@@ -704,7 +705,7 @@ celle téléchargée (par exemple dans `~/Téléchargements/`).
    ```
 3. Écrire l'ISO, puis vider les tampons :
    ```bash
-   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
+   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso
    sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
    sync
    ```

@@ -381,7 +381,7 @@ git history).
 | Choppy sound in VLC | DP/HDMI outputs at 85 ms per block, Pulse client buffers too small | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC on ALSA output, see below) |
 | 7.0 GRUB entry before the 7.2 one | alphabetical order of `/etc/grub.d` | `/etc/grub.d/07_sky1` sorts Sky1 kernels by version |
 | 6 bits per colour after the display bounces on wake-up (`info_format=0, force support RGB444`) | the modeset forced after the bounce ran before the EDID was read again, while GNOME had cleared it during the 2 s "unplugged" | `9007` re-reads the EDID before the modeset ("HPD bounce: EDID re-read, bpc=…") |
-| An HDMI capture device (Elgato 4K S) records no sound although the display plugged behind it plays it | the DP driver wrote the channel status byte that announces the sampling frequency bit-reversed: a 48 kHz stream was announced as 44.1 kHz. Displays ignore that announcement, capture devices trust it | patch `0051`: byte written in the right bit order (tested at 32, 44.1 and 48 kHz); from the kernel that follows 7.3.1-1 |
+| An HDMI capture device (Elgato 4K S) records no sound although the display plugged behind it plays it | the DP driver wrote the channel status byte that announces the sampling frequency bit-reversed: a 48 kHz stream was announced as 44.1 kHz. Displays ignore that announcement, capture devices trust it | patch `0051`: byte written in the right bit order (tested at 32, 44.1 and 48 kHz); from kernel 7.3.1-2 (APT repository, ISOs of 12/11) |
 | `geoclue` failing at boot (`start operation timed out`, 90 s) | deadlock in GIO when geoclue starts: the libproxy module, loaded under the modules lock, waits for an initialisation the main thread cannot finish | "dummy" proxy resolver for geoclue: `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` |
 | `cros-ec-i2c 6-0076: Cannot identify the EC: error -71` at every boot | EC node inherited from the CIX reference board (a laptop: battery, lid, keyboard); no such EC on the Orange Pi 6 Plus | node disabled (`dts-disable-cros-ec.py`) |
 
@@ -564,15 +564,16 @@ Existing GNOME sessions keep their own settings (Settings → Region & Language,
 > (firmware licences: see `firmware/README.md`).
 
 **Ready-to-use ISOs: [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
-with their `.sha256` file and their GPG signature `.asc`. For now, two series of ISOs are online, each
+with their `.sha256` file and their GPG signature `.asc`. For now, three series of ISOs are online, each
 in Ubuntu 26.10 and 26.04.1 LTS:
 
 | ISO | Sky1 kernel | Advice |
 |---|---|---|
-| `…-20261101.iso` | 7.3.1 | **recommended** (current kernel) |
-| `…-20261026.iso` | 7.2.12 | previous, kept as an option for now; it will be removed later |
+| `…-20261112.iso` | 7.3.1 (package 7.3.1-2, patch `0051`) | **recommended** (current kernel) |
+| `…-20261101.iso` | 7.3.1 (package 7.3.1-1) | previous, kept as an option |
+| `…-20261026.iso` | 7.2.12 | old, removed around 16 November 2026 |
 
-Both are tested (live + installation). Whichever ISO you choose, once the
+All are tested (live + installation). Whichever ISO you choose, once the
 [APT repository](#-after-installation-staying-up-to-date) is added, `apt upgrade` moves the system to the
 latest kernel published by this project.
 
@@ -583,8 +584,8 @@ sha256sum -c ubuntu-*-bookworm-sky1-orangepi6plus-arm64-*.iso.sha256    # must p
 Optionally, also check the signature with the public key given on the same page:
 ```bash
 gpg --import kennytech73_public_key.asc
-gpg --verify ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso.asc \
-             ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso   # "Good signature"
+gpg --verify ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso.asc \
+             ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso   # "Good signature"
 ```
 then go straight to step 4 (write the ISO to a USB stick). Steps 1 to 3 are for building the ISO
 yourself.
@@ -698,7 +699,7 @@ example in `~/Downloads/`).
    ```
 3. Write the ISO, then flush the buffers:
    ```bash
-   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261101.iso
+   ISO=/usr/src/build/sky1-iso/ubuntu-26.10-bookworm-sky1-orangepi6plus-arm64-20261112.iso
    sudo dd if="$ISO" of=/dev/sdX bs=4M conv=fsync status=progress
    sync
    ```
