@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Thu, 12 Nov 2026 08:15:00 +0100
+Subject: [PATCH] drm/cix: dptx: audio: announce the real sampling frequency
+ in the channel status
+
+The DP controller takes the IEC 60958 channel status byte that carries
+the sampling frequency and the clock accuracy
+(TRILIN_DPTX_SEC0_CS_FREQ_CLOCK_ACCURACY) with the first transmitted bit
+in bit 0. The DPTX_CS_SAMPLING_FREQ_* values are written in transmission
+order, first bit on the left, so the byte reaches the sink bit-reversed:
+a 48 kHz stream (0x40) is announced as 44.1 kHz, and only 44.1 kHz
+(0x00) is announced correctly.
+
+Displays ignore the channel status and play the stream anyway. HDMI
+capture devices trust it: an Elgato 4K S behind the on-board DP to HDMI
+converter (Parade PS186) passes the sound through to its HDMI output but
+captures silence at 48 kHz, the default rate of PipeWire.
+
+Reverse the bits of that byte before writing it. The word length /
+original frequency byte (TRILIN_DPTX_SEC0_CS_LENGTH_ORIG_FREQ) is taken
+as written by the controller and is left alone: reversing it too gives
+a distorted capture at 44.1 kHz.
+
+Tested on an Orange Pi 6 Plus with the Elgato 4K S as HDMI sink:
+32 kHz (0x03), 44.1 kHz (0x00) and 48 kHz (0x02) are captured cleanly,
+sound on the display unchanged. Higher rates follow the same rule but
+are not tested (not accepted by this sink).
+
+[added by BOOKWORM]
+---
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/cix/dptx/trilin_dptx_audio.c b/drivers/gpu/drm/cix/dptx/trilin_dptx_audio.c
+index 0119509f017fd2e24a788e67c033d75f8d74bbaa..bcb1a0a5a1d889749e7101958d6c6e7798588fd1 100644
+--- a/drivers/gpu/drm/cix/dptx/trilin_dptx_audio.c
++++ b/drivers/gpu/drm/cix/dptx/trilin_dptx_audio.c
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /* Copyright 2024 Cix Technology Group Co., Ltd. */
++#include <linux/bitrev.h>
+ #include <linux/kernel.h>
+ #include <linux/hdmi.h>
+ #include <drm/drm_eld.h>
+@@ -84,8 +85,16 @@ static void dptx_audio_setup(struct trilin_dp *dp, int source, int freq,
+ 
+ 	trilin_dp_write(dp, TRILIN_DPTX_SEC0_CS_LENGTH_ORIG_FREQ + offset,
+ 			cs_length_orig_freq);
++	/*
++	 * The controller takes this channel status byte (sampling frequency
++	 * and clock accuracy) with the first transmitted bit in bit 0, while
++	 * the DPTX_CS_SAMPLING_FREQ_* values are written in transmission
++	 * order. Written as is, 48 kHz (0x40) is announced as 44.1 kHz:
++	 * displays do not care, HDMI capture devices mute the stream.
++	 * The word length / original frequency byte above is taken as is.
++	 */
+ 	trilin_dp_write(dp, TRILIN_DPTX_SEC0_CS_FREQ_CLOCK_ACCURACY + offset,
+-			cs_freq_clock_accuracy);
++			bitrev8(cs_freq_clock_accuracy));
+ 	/* copyright*/
+ 	trilin_dp_write(dp, TRILIN_DPTX_SEC0_CS_COPYRIGHT + offset,
+ 			DPTX_CS_COPYRIGHT);

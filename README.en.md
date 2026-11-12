@@ -251,7 +251,7 @@ Before removing the last Sky1 kernel, boot the Ubuntu kernel. Removing the lates
 
 ### Under the hood: what the build does (`bookworm-sky1-build.sh`)
 1. downloads `linux-7.3.1.tar.xz` from kernel.org and extracts it;
-2. applies the repository's **Sky1 series** (`patches/sky1-7.3.1/`, 50 patches) in **strict mode** (no fuzz);
+2. applies the repository's **Sky1 series** (`patches/sky1-7.3.1/`, 51 patches) in **strict mode** (no fuzz);
 3. applies the **local fixes** `patches/fixes/9xxx-*.patch`;
 4. applies the **DTS / driver fixes** `patches/fixes/*.py` (empty PCIe slot, thermal zones…);
 5. takes the most recent Ubuntu `-generic` kernel config, injects the Sky1 config
@@ -327,7 +327,7 @@ The stock Ubuntu kernel stays installed and keeps its GRUB entry: it is the fall
 | `7.2.13-stable` | Linux 7.2.13 | Previous, kept as a fallback (validated on 28 October 2026) |
 
 kernel.org stable updates are followed. Linux 7.3.1 came out on 30 October 2026: the series was ported
-to 7.3 (`patches/sky1-7.3.1/`, 50 patches, including `0050` for the Linux 7.3 APIs), tested from
+to 7.3 (`patches/sky1-7.3.1/`, 51 patches, including `0050` for the Linux 7.3 APIs), tested from
 30 October to 1 November (sound, video, 3D game, glmark2 2865, on par with 7.2.13) and published on the BOOKWORM
 APT repository ([staying up to date](#-after-installation-staying-up-to-date)).
 First Ubuntu version: 7.2.11, validated on 16 October 2026.
@@ -345,7 +345,9 @@ to **Linux 7.3.1** (`patches/sky1-7.3.1/`, conflicts with upstream 7.3 described
 - `0048` (BOOKWORM): HDMI sound lost when the display wakes up (full reset of the DP controller);
 - `0049` (BOOKWORM): a hung GPU is recovered through its reset line instead of being lost until reboot
   (v2, kernel 7.2.12-3: no more panic if an application frees its GPU memory during that reset);
-- `0050` (BOOKWORM, 7.3.1 series only): vendor drivers adapted to the Linux 7.3 APIs.
+- `0050` (BOOKWORM, 7.3.1 series only): vendor drivers adapted to the Linux 7.3 APIs;
+- `0051` (BOOKWORM): the HDMI/DP output announces the real sampling frequency of the sound (an HDMI
+  capture device recorded silence at 48 kHz).
 
 The reference Sky1 config is copied into `config/sky1/`: the build no longer depends on linux-sky1.
 To port the series to a later version (7.4…), see `tools/portage-sky1/README.md`.
@@ -379,6 +381,7 @@ git history).
 | Choppy sound in VLC | DP/HDMI outputs at 85 ms per block, Pulse client buffers too small | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC on ALSA output, see below) |
 | 7.0 GRUB entry before the 7.2 one | alphabetical order of `/etc/grub.d` | `/etc/grub.d/07_sky1` sorts Sky1 kernels by version |
 | 6 bits per colour after the display bounces on wake-up (`info_format=0, force support RGB444`) | the modeset forced after the bounce ran before the EDID was read again, while GNOME had cleared it during the 2 s "unplugged" | `9007` re-reads the EDID before the modeset ("HPD bounce: EDID re-read, bpc=…") |
+| An HDMI capture device (Elgato 4K S) records no sound although the display plugged behind it plays it | the DP driver wrote the channel status byte that announces the sampling frequency bit-reversed: a 48 kHz stream was announced as 44.1 kHz. Displays ignore that announcement, capture devices trust it | patch `0051`: byte written in the right bit order (tested at 32, 44.1 and 48 kHz); from the kernel that follows 7.3.1-1 |
 | `geoclue` failing at boot (`start operation timed out`, 90 s) | deadlock in GIO when geoclue starts: the libproxy module, loaded under the modules lock, waits for an initialisation the main thread cannot finish | "dummy" proxy resolver for geoclue: `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` |
 | `cros-ec-i2c 6-0076: Cannot identify the EC: error -71` at every boot | EC node inherited from the CIX reference board (a laptop: battery, lid, keyboard); no such EC on the Orange Pi 6 Plus | node disabled (`dts-disable-cros-ec.py`) |
 

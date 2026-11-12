@@ -249,7 +249,7 @@ le méta-paquet `linux-image-sky1` qui en dépend (voir [rester à jour](#-aprè
 
 ### Pour comprendre : ce que fait le build (`bookworm-sky1-build.sh`)
 1. télécharge `linux-7.3.1.tar.xz` depuis kernel.org et l'extrait ;
-2. applique la **série Sky1** du dépôt (`patches/sky1-7.3.1/`, 50 patches) en **mode strict** (aucun fuzz) ;
+2. applique la **série Sky1** du dépôt (`patches/sky1-7.3.1/`, 51 patches) en **mode strict** (aucun fuzz) ;
 3. applique les **correctifs locaux** `patches/fixes/9xxx-*.patch` ;
 4. applique les **fixes DTS / pilotes** `patches/fixes/*.py` (slot PCIe vide, zones thermiques…) ;
 5. prend la config du noyau Ubuntu `-generic` la plus récente, y injecte la config Sky1
@@ -326,7 +326,7 @@ Le noyau Ubuntu stock reste installé et garde son entrée GRUB : c'est le secou
 | `7.2.13-stable` | Linux 7.2.13 | Précédent, gardé en secours (validé le 28 octobre 2026) |
 
 Les mises à jour stables de kernel.org sont suivies. Linux 7.3.1 est sorti le 30 octobre 2026 : la série
-a été portée sur 7.3 (`patches/sky1-7.3.1/`, 50 patches, dont `0050` pour les API de Linux 7.3), testée
+a été portée sur 7.3 (`patches/sky1-7.3.1/`, 51 patches, dont `0050` pour les API de Linux 7.3), testée
 du 30 octobre au 1er novembre (son, vidéo, jeu 3D, glmark2 2865, au niveau de 7.2.13) et publiée sur le
 dépôt APT BOOKWORM ([rester à jour](#-après-linstallation--rester-à-jour)).
 Première version Ubuntu : 7.2.11, validée le 16 octobre 2026.
@@ -344,7 +344,9 @@ sur **Linux 7.3.1** (`patches/sky1-7.3.1/`, conflits avec l'amont 7.3 décrits d
 - `0048` (BOOKWORM) : son HDMI perdu au réveil de l'écran (réinitialisation complète du contrôleur DP) ;
 - `0049` (BOOKWORM) : GPU bloqué récupéré par sa ligne de reset au lieu d'être perdu jusqu'au redémarrage
   (v2, noyau 7.2.12-3 : plus de panique si une application libère sa mémoire GPU pendant ce reset) ;
-- `0050` (BOOKWORM, série 7.3.1 seulement) : pilotes du constructeur adaptés aux API de Linux 7.3.
+- `0050` (BOOKWORM, série 7.3.1 seulement) : pilotes du constructeur adaptés aux API de Linux 7.3 ;
+- `0051` (BOOKWORM) : la sortie HDMI/DP annonce la vraie fréquence du son (un boîtier de capture HDMI
+  enregistrait du silence en 48 kHz).
 
 La config Sky1 de référence est copiée dans `config/sky1/` : le build ne dépend plus de linux-sky1.
 Pour porter la série sur une version suivante (7.4…), voir `tools/portage-sky1/README.md`.
@@ -378,6 +380,7 @@ l'historique git).
 | Son haché dans VLC | sorties DP/HDMI à 85 ms par bloc, tampons des clients Pulse trop petits | `config/pipewire/pipewire-pulse.conf.d/` (+ VLC en sortie ALSA, voir plus bas) |
 | Entrée GRUB du 7.0 avant celle du 7.2 | tri alphabétique de `/etc/grub.d` | `/etc/grub.d/07_sky1` trie les noyaux Sky1 par version |
 | Image en 6 bits par couleur après un rebond de l'écran au réveil (`info_format=0, force support RGB444`) | le modeset forcé après le rebond partait avant la relecture de l'EDID, que GNOME avait effacée pendant les 2 s « débranché » | `9007` relit l'EDID avant le modeset (« HPD bounce: EDID re-read, bpc=… ») |
+| Un boîtier de capture HDMI (Elgato 4K S) n'enregistre aucun son alors que l'écran branché derrière lui en a | le pilote DP écrivait à l'envers l'octet du « channel status » qui annonce la fréquence : un flux en 48 kHz était annoncé en 44,1 kHz. Les écrans ignorent cette annonce, les boîtiers de capture s'y fient | patch `0051` : octet écrit dans le bon ordre de bits (testé en 32, 44,1 et 48 kHz) ; à partir du noyau qui suivra 7.3.1-1 |
 | `geoclue` en échec au démarrage (`start operation timed out`, 90 s) | interblocage dans GIO au démarrage de geoclue : le module libproxy, chargé sous le verrou des modules, attend l'initialisation que le fil principal ne peut pas finir | résolveur de proxy « dummy » pour geoclue : `/usr/lib/systemd/system/geoclue.service.d/90-bookworm-sky1.conf` |
 | `cros-ec-i2c 6-0076: Cannot identify the EC: error -71` à chaque démarrage | nœud EC repris de la carte de référence CIX (un portable : batterie, capot, clavier) ; aucun EC de ce type sur l'Orange Pi 6 Plus | nœud désactivé (`dts-disable-cros-ec.py`) |
 

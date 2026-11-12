@@ -331,7 +331,10 @@ if ! $SKIP_CONFIG; then
     if [[ -n "$BASE_CONFIG" && -f "$BASE_CONFIG" ]]; then
         # Config personnalisée (Ubuntu) + injection Sky1
         info "Config de base: $BASE_CONFIG"
-        if [[ "$BASE_CONFIG" == *.gz ]]; then
+        # En --dry-run, ne pas toucher au .config de l'arbre (il écrasait la config du build)
+        if $DRY_RUN; then
+            :
+        elif [[ "$BASE_CONFIG" == *.gz ]]; then
             zcat "$BASE_CONFIG" > .config
         else
             cp "$BASE_CONFIG" .config
@@ -343,8 +346,8 @@ if ! $SKIP_CONFIG; then
     else
         # Config Sky1 pure
         info "Utilisation config Sky1 pure: $SKY1_CONFIG_FILE"
-        cp "$SKY1_CONFIG_FILE" .config
-        make ARCH=arm64 ${CC:+CC="$CC"} olddefconfig 2>&1 | tee -a "$LOG_FILE"
+        $DRY_RUN || cp "$SKY1_CONFIG_FILE" .config
+        $DRY_RUN || make ARCH=arm64 ${CC:+CC="$CC"} olddefconfig 2>&1 | tee -a "$LOG_FILE"
     fi
 
     # Forcer les options built-in critiques
