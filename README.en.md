@@ -564,14 +564,13 @@ Existing GNOME sessions keep their own settings (Settings → Region & Language,
 > (firmware licences: see `firmware/README.md`).
 
 **Ready-to-use ISOs: [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
-with their `.sha256` file and their GPG signature `.asc`. For now, three series of ISOs are online, each
+with their `.sha256` file and their GPG signature `.asc`. Two series of ISOs are online, each
 in Ubuntu 26.10 and 26.04.1 LTS:
 
 | ISO | Sky1 kernel | Advice |
 |---|---|---|
 | `…-20261112.iso` | 7.3.1 (package 7.3.1-2, patch `0051`) | **recommended** (current kernel) |
 | `…-20261101.iso` | 7.3.1 (package 7.3.1-1) | previous, kept as an option |
-| `…-20261026.iso` | 7.2.12 | old, removed around 16 November 2026 |
 
 All are tested (live + installation). Whichever ISO you choose, once the
 [APT repository](#-after-installation-staying-up-to-date) is added, `apt upgrade` moves the system to the

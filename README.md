@@ -570,14 +570,13 @@ Les sessions GNOME existantes gardent leurs propres réglages (Paramètres → R
 > (licences des firmwares : voir `firmware/README.md`).
 
 **ISO prêtes à l'emploi : [www.bookworm-mon0.org/downloads.php](https://www.bookworm-mon0.org/downloads.php)**,
-avec leur fichier `.sha256` et leur signature GPG `.asc`. Pour l'instant, trois séries d'ISO sont en ligne,
+avec leur fichier `.sha256` et leur signature GPG `.asc`. Deux séries d'ISO sont en ligne,
 chacune en Ubuntu 26.10 et 26.04.1 LTS :
 
 | ISO | Noyau Sky1 | Conseil |
 |---|---|---|
 | `…-20261112.iso` | 7.3.1 (paquet 7.3.1-2, patch `0051`) | **recommandée** (noyau actuel) |
 | `…-20261101.iso` | 7.3.1 (paquet 7.3.1-1) | précédente, gardée au choix |
-| `…-20261026.iso` | 7.2.12 | ancienne, retirée vers le 16 novembre 2026 |
 
 Toutes sont testées (live + installation). Quelle que soit l'ISO choisie, une fois le
 [dépôt APT](#-après-linstallation--rester-à-jour) ajouté, `apt upgrade` passe le système au noyau le plus
