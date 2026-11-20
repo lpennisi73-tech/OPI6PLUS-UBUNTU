@@ -4,121 +4,33 @@ Date: Mon, 16 Feb 2026 17:45:37 +1100
 Subject: [PATCH] misc: armchina-npu: Add Zhouyi NPU driver for CIX Sky1
 
 Add ARM China Zhouyi AI accelerator driver with ACPI DVFS.
+
+[ported to Linux 7.3.1 by BOOKWORM: conflicts with upstream resolved]
 ---
- drivers/misc/Kconfig                          |    1 +
- drivers/misc/Makefile                         |    1 +
- drivers/misc/armchina-npu/Kconfig             |   69 +
- drivers/misc/armchina-npu/Makefile            |   18 +
- drivers/misc/armchina-npu/aipu.c              |  465 ++++
- drivers/misc/armchina-npu/aipu_common.c       |  315 +++
- drivers/misc/armchina-npu/aipu_common.h       |   41 +
- drivers/misc/armchina-npu/aipu_dma_buf.c      |  332 +++
- drivers/misc/armchina-npu/aipu_dma_buf.h      |   34 +
- drivers/misc/armchina-npu/aipu_io.c           |   82 +
- drivers/misc/armchina-npu/aipu_io.h           |   27 +
- drivers/misc/armchina-npu/aipu_irq.c          |  126 +
- drivers/misc/armchina-npu/aipu_irq.h          |   43 +
- drivers/misc/armchina-npu/aipu_job_manager.c  | 1747 +++++++++++++
- drivers/misc/armchina-npu/aipu_job_manager.h  |  238 ++
- drivers/misc/armchina-npu/aipu_mm.c           | 2218 +++++++++++++++++
- drivers/misc/armchina-npu/aipu_mm.h           |  267 ++
- drivers/misc/armchina-npu/aipu_partition.h    |  151 ++
- drivers/misc/armchina-npu/aipu_priv.c         |  309 +++
- drivers/misc/armchina-npu/aipu_priv.h         |   89 +
- drivers/misc/armchina-npu/aipu_tcb.c          |   63 +
- drivers/misc/armchina-npu/aipu_tcb.h          |  139 ++
- drivers/misc/armchina-npu/config.h            |   18 +
- drivers/misc/armchina-npu/default/Makefile    |    5 +
- drivers/misc/armchina-npu/default/default.c   |   88 +
- .../misc/armchina-npu/include/armchina_aipu.h |  699 ++++++
- .../armchina-npu/include/armchina_aipu_soc.h  |   54 +
- .../misc/armchina-npu/include/cix_sky1_soc.h  |   25 +
- drivers/misc/armchina-npu/r329/Makefile       |    5 +
- drivers/misc/armchina-npu/r329/r329.c         |  160 ++
- drivers/misc/armchina-npu/sky1/Makefile       |    5 +
- drivers/misc/armchina-npu/sky1/sky1.c         |  568 +++++
- drivers/misc/armchina-npu/zhouyi/Makefile     |   12 +
- drivers/misc/armchina-npu/zhouyi/v1.c         |  271 ++
- drivers/misc/armchina-npu/zhouyi/v1.h         |   34 +
- drivers/misc/armchina-npu/zhouyi/v1v2_priv.c  |  232 ++
- drivers/misc/armchina-npu/zhouyi/v2.c         |  407 +++
- drivers/misc/armchina-npu/zhouyi/v2.h         |   54 +
- drivers/misc/armchina-npu/zhouyi/v3.c         |  523 ++++
- drivers/misc/armchina-npu/zhouyi/v3.h         |  427 ++++
- drivers/misc/armchina-npu/zhouyi/v3_1.c       |  374 +++
- drivers/misc/armchina-npu/zhouyi/v3_1.h       |  456 ++++
- drivers/misc/armchina-npu/zhouyi/v3_1_priv.c  |  159 ++
- drivers/misc/armchina-npu/zhouyi/v3_priv.c    |  229 ++
- drivers/misc/armchina-npu/zhouyi/zhouyi.c     |  181 ++
- drivers/misc/armchina-npu/zhouyi/zhouyi.h     |  104 +
  46 files changed, 11865 insertions(+)
- create mode 100644 drivers/misc/armchina-npu/Kconfig
- create mode 100755 drivers/misc/armchina-npu/Makefile
- create mode 100644 drivers/misc/armchina-npu/aipu.c
- create mode 100755 drivers/misc/armchina-npu/aipu_common.c
- create mode 100755 drivers/misc/armchina-npu/aipu_common.h
- create mode 100755 drivers/misc/armchina-npu/aipu_dma_buf.c
- create mode 100755 drivers/misc/armchina-npu/aipu_dma_buf.h
- create mode 100755 drivers/misc/armchina-npu/aipu_io.c
- create mode 100755 drivers/misc/armchina-npu/aipu_io.h
- create mode 100755 drivers/misc/armchina-npu/aipu_irq.c
- create mode 100755 drivers/misc/armchina-npu/aipu_irq.h
- create mode 100755 drivers/misc/armchina-npu/aipu_job_manager.c
- create mode 100755 drivers/misc/armchina-npu/aipu_job_manager.h
- create mode 100755 drivers/misc/armchina-npu/aipu_mm.c
- create mode 100755 drivers/misc/armchina-npu/aipu_mm.h
- create mode 100755 drivers/misc/armchina-npu/aipu_partition.h
- create mode 100755 drivers/misc/armchina-npu/aipu_priv.c
- create mode 100755 drivers/misc/armchina-npu/aipu_priv.h
- create mode 100755 drivers/misc/armchina-npu/aipu_tcb.c
- create mode 100755 drivers/misc/armchina-npu/aipu_tcb.h
- create mode 100755 drivers/misc/armchina-npu/config.h
- create mode 100755 drivers/misc/armchina-npu/default/Makefile
- create mode 100755 drivers/misc/armchina-npu/default/default.c
- create mode 100755 drivers/misc/armchina-npu/include/armchina_aipu.h
- create mode 100755 drivers/misc/armchina-npu/include/armchina_aipu_soc.h
- create mode 100644 drivers/misc/armchina-npu/include/cix_sky1_soc.h
- create mode 100755 drivers/misc/armchina-npu/r329/Makefile
- create mode 100755 drivers/misc/armchina-npu/r329/r329.c
- create mode 100755 drivers/misc/armchina-npu/sky1/Makefile
- create mode 100644 drivers/misc/armchina-npu/sky1/sky1.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/Makefile
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v1.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v1.h
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v1v2_priv.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v2.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v2.h
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v3.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v3.h
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v3_1.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v3_1.h
- create mode 100755 drivers/misc/armchina-npu/zhouyi/v3_1_priv.c
- create mode 100644 drivers/misc/armchina-npu/zhouyi/v3_priv.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/zhouyi.c
- create mode 100755 drivers/misc/armchina-npu/zhouyi/zhouyi.h
 
 diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
-index 5cc79d1517af5..c5f536e78428e 100644
+index 7364931dad3a1f2bb2ba5aa86dc9917239f45aa7..fe5e44cb977e521230d2e306db4a047c65655d9b 100644
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
-@@ -660,4 +660,5 @@ source "drivers/misc/mchp_pci1xxxx/Kconfig"
- source "drivers/misc/keba/Kconfig"
+@@ -586,4 +586,5 @@ source "drivers/misc/keba/Kconfig"
  source "drivers/misc/amd-sbi/Kconfig"
  source "drivers/misc/rp1/Kconfig"
+ source "drivers/misc/issei/Kconfig"
 +source "drivers/misc/armchina-npu/Kconfig"
  endmenu
 diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
-index b32a2597d2467..05fb41c3a8111 100644
+index e8d8d5d88c0df1201652bf31dd82667080d9be69..7b53428046078fe8b34c81912ac8c502bda00f86 100644
 --- a/drivers/misc/Makefile
 +++ b/drivers/misc/Makefile
-@@ -75,3 +75,4 @@ obj-$(CONFIG_MCHP_LAN966X_PCI)	+= lan966x-pci.o
- obj-y				+= keba/
+@@ -71,3 +71,4 @@ obj-y				+= keba/
  obj-y				+= amd-sbi/
  obj-$(CONFIG_MISC_RP1)		+= rp1/
+ obj-$(CONFIG_INTEL_SSEI)	+= issei/
 +obj-$(CONFIG_ARMCHINA_NPU)	+= armchina-npu/
 diff --git a/drivers/misc/armchina-npu/Kconfig b/drivers/misc/armchina-npu/Kconfig
 new file mode 100644
-index 0000000000000..6433b28260033
+index 0000000000000000000000000000000000000000..6433b28260033eb10e9a13b1488877a266dd41f8
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/Kconfig
 @@ -0,0 +1,69 @@
@@ -193,7 +105,7 @@ index 0000000000000..6433b28260033
 +	  For other SoCs, say N.
 diff --git a/drivers/misc/armchina-npu/Makefile b/drivers/misc/armchina-npu/Makefile
 new file mode 100755
-index 0000000000000..f276bed415b25
+index 0000000000000000000000000000000000000000..f276bed415b25d8e55b56fd0849ff9ab8430538d
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/Makefile
 @@ -0,0 +1,18 @@
@@ -218,7 +130,7 @@ index 0000000000000..f276bed415b25
 \ No newline at end of file
 diff --git a/drivers/misc/armchina-npu/aipu.c b/drivers/misc/armchina-npu/aipu.c
 new file mode 100644
-index 0000000000000..bc1ce2ff5f74f
+index 0000000000000000000000000000000000000000..bc1ce2ff5f74f7ce6fe3de6b72b3c5adaf895d67
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu.c
 @@ -0,0 +1,465 @@
@@ -689,7 +601,7 @@ index 0000000000000..bc1ce2ff5f74f
 +MODULE_DESCRIPTION("ArmChina Zhouyi NPU accelerator driver");
 diff --git a/drivers/misc/armchina-npu/aipu_common.c b/drivers/misc/armchina-npu/aipu_common.c
 new file mode 100755
-index 0000000000000..2bb8c6cd625cd
+index 0000000000000000000000000000000000000000..2bb8c6cd625cd3c975eb32a24914c3238d06906c
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_common.c
 @@ -0,0 +1,315 @@
@@ -1010,7 +922,7 @@ index 0000000000000..2bb8c6cd625cd
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_common.h b/drivers/misc/armchina-npu/aipu_common.h
 new file mode 100755
-index 0000000000000..423fd95df7821
+index 0000000000000000000000000000000000000000..423fd95df7821f6b9d202506aabd6b859a249a85
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_common.h
 @@ -0,0 +1,41 @@
@@ -1057,7 +969,7 @@ index 0000000000000..423fd95df7821
 +#endif /* __AIPU_COMMON_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_dma_buf.c b/drivers/misc/armchina-npu/aipu_dma_buf.c
 new file mode 100755
-index 0000000000000..c7cae6938e187
+index 0000000000000000000000000000000000000000..c7cae6938e18796b1b3c7ca20ebbbeceda1fdab4
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_dma_buf.c
 @@ -0,0 +1,332 @@
@@ -1395,7 +1307,7 @@ index 0000000000000..c7cae6938e187
 +MODULE_IMPORT_NS("DMA_BUF");
 diff --git a/drivers/misc/armchina-npu/aipu_dma_buf.h b/drivers/misc/armchina-npu/aipu_dma_buf.h
 new file mode 100755
-index 0000000000000..cbc81bb7be238
+index 0000000000000000000000000000000000000000..cbc81bb7be238759341393cc6360994c8b7b11bc
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_dma_buf.h
 @@ -0,0 +1,34 @@
@@ -1435,7 +1347,7 @@ index 0000000000000..cbc81bb7be238
 +#endif /* __AIPU_DMA_BUF_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_io.c b/drivers/misc/armchina-npu/aipu_io.c
 new file mode 100755
-index 0000000000000..89fe2f52a8c5c
+index 0000000000000000000000000000000000000000..89fe2f52a8c5c65e0e887f83fc91e5fc23bbf564
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_io.c
 @@ -0,0 +1,82 @@
@@ -1523,7 +1435,7 @@ index 0000000000000..89fe2f52a8c5c
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_io.h b/drivers/misc/armchina-npu/aipu_io.h
 new file mode 100755
-index 0000000000000..a9995e1cf5e7b
+index 0000000000000000000000000000000000000000..a9995e1cf5e7be38c25b5a124a5db510d32f99ab
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_io.h
 @@ -0,0 +1,27 @@
@@ -1556,7 +1468,7 @@ index 0000000000000..a9995e1cf5e7b
 +#endif /* __AIPU_IO_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_irq.c b/drivers/misc/armchina-npu/aipu_irq.c
 new file mode 100755
-index 0000000000000..a4bad6e2f3ab3
+index 0000000000000000000000000000000000000000..a4bad6e2f3ab3fd27afd1c8c61ffd2b76dcb7efc
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_irq.c
 @@ -0,0 +1,126 @@
@@ -1688,7 +1600,7 @@ index 0000000000000..a4bad6e2f3ab3
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_irq.h b/drivers/misc/armchina-npu/aipu_irq.h
 new file mode 100755
-index 0000000000000..a9b99b72b2816
+index 0000000000000000000000000000000000000000..a9b99b72b281656dd356010c2726699c5f55a382
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_irq.h
 @@ -0,0 +1,43 @@
@@ -1737,7 +1649,7 @@ index 0000000000000..a9b99b72b2816
 +#endif /* __AIPU_IRQ_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_job_manager.c b/drivers/misc/armchina-npu/aipu_job_manager.c
 new file mode 100755
-index 0000000000000..da4622ccfcc95
+index 0000000000000000000000000000000000000000..da4622ccfcc95fb76bfabf2e73c8a57dc02d29ce
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_job_manager.c
 @@ -0,0 +1,1747 @@
@@ -3490,7 +3402,7 @@ index 0000000000000..da4622ccfcc95
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_job_manager.h b/drivers/misc/armchina-npu/aipu_job_manager.h
 new file mode 100755
-index 0000000000000..b3d45af1e0c1f
+index 0000000000000000000000000000000000000000..b3d45af1e0c1f14ae66e945b279c81d862772fe6
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_job_manager.h
 @@ -0,0 +1,238 @@
@@ -3734,7 +3646,7 @@ index 0000000000000..b3d45af1e0c1f
 +#endif /* __AIPU_JOB_MANAGER_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_mm.c b/drivers/misc/armchina-npu/aipu_mm.c
 new file mode 100755
-index 0000000000000..acd18f1e60c7c
+index 0000000000000000000000000000000000000000..acd18f1e60c7c37a37ba280a1c4c407e4423bdbd
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_mm.c
 @@ -0,0 +1,2218 @@
@@ -5958,7 +5870,7 @@ index 0000000000000..acd18f1e60c7c
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_mm.h b/drivers/misc/armchina-npu/aipu_mm.h
 new file mode 100755
-index 0000000000000..597659efb7235
+index 0000000000000000000000000000000000000000..597659efb72358ceba1f3628aa3bd0961917eb63
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_mm.h
 @@ -0,0 +1,267 @@
@@ -6231,7 +6143,7 @@ index 0000000000000..597659efb7235
 +#endif /* __AIPU_MM_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_partition.h b/drivers/misc/armchina-npu/aipu_partition.h
 new file mode 100755
-index 0000000000000..95b91c132ecc9
+index 0000000000000000000000000000000000000000..95b91c132ecc938acf6bae1d7a68102420ebdd79
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_partition.h
 @@ -0,0 +1,151 @@
@@ -6388,7 +6300,7 @@ index 0000000000000..95b91c132ecc9
 +#endif /* __AIPU_PARTITION_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_priv.c b/drivers/misc/armchina-npu/aipu_priv.c
 new file mode 100755
-index 0000000000000..7b26b7109c45c
+index 0000000000000000000000000000000000000000..7b26b7109c45ccccb4e1e02ed1abf3317f9317e6
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_priv.c
 @@ -0,0 +1,309 @@
@@ -6703,7 +6615,7 @@ index 0000000000000..7b26b7109c45c
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_priv.h b/drivers/misc/armchina-npu/aipu_priv.h
 new file mode 100755
-index 0000000000000..ee06bcab46514
+index 0000000000000000000000000000000000000000..ee06bcab46514d9f47368025b72f1ae48df6b596
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_priv.h
 @@ -0,0 +1,89 @@
@@ -6798,7 +6710,7 @@ index 0000000000000..ee06bcab46514
 +#endif /* __AIPU_PRIV_H__ */
 diff --git a/drivers/misc/armchina-npu/aipu_tcb.c b/drivers/misc/armchina-npu/aipu_tcb.c
 new file mode 100755
-index 0000000000000..631be1dc5fb8a
+index 0000000000000000000000000000000000000000..631be1dc5fb8ac074d8fb4a1e669f2ab58e40458
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_tcb.c
 @@ -0,0 +1,63 @@
@@ -6867,7 +6779,7 @@ index 0000000000000..631be1dc5fb8a
 +}
 diff --git a/drivers/misc/armchina-npu/aipu_tcb.h b/drivers/misc/armchina-npu/aipu_tcb.h
 new file mode 100755
-index 0000000000000..9adc1a9ce5539
+index 0000000000000000000000000000000000000000..9adc1a9ce5539ecec10a68dad8e70a39a86173ba
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/aipu_tcb.h
 @@ -0,0 +1,139 @@
@@ -7012,7 +6924,7 @@ index 0000000000000..9adc1a9ce5539
 +#endif /* __AIPU_TCB_H__ */
 diff --git a/drivers/misc/armchina-npu/config.h b/drivers/misc/armchina-npu/config.h
 new file mode 100755
-index 0000000000000..01aad734065a5
+index 0000000000000000000000000000000000000000..01aad734065a59cbc52cb610cc87a03d15a7412a
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/config.h
 @@ -0,0 +1,18 @@
@@ -7036,7 +6948,7 @@ index 0000000000000..01aad734065a5
 +#endif /* __CONFIG_H__ */
 diff --git a/drivers/misc/armchina-npu/default/Makefile b/drivers/misc/armchina-npu/default/Makefile
 new file mode 100755
-index 0000000000000..e3bb9ef03c127
+index 0000000000000000000000000000000000000000..e3bb9ef03c127067203b669a94ac81208f96c158
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/default/Makefile
 @@ -0,0 +1,5 @@
@@ -7048,7 +6960,7 @@ index 0000000000000..e3bb9ef03c127
 \ No newline at end of file
 diff --git a/drivers/misc/armchina-npu/default/default.c b/drivers/misc/armchina-npu/default/default.c
 new file mode 100755
-index 0000000000000..a39f0c9728272
+index 0000000000000000000000000000000000000000..a39f0c9728272a0c06dbe023cb451f9ee1df9ddf
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/default/default.c
 @@ -0,0 +1,88 @@
@@ -7142,7 +7054,7 @@ index 0000000000000..a39f0c9728272
 +MODULE_DESCRIPTION("ArmChina Zhouyi AI accelerator driver");
 diff --git a/drivers/misc/armchina-npu/include/armchina_aipu.h b/drivers/misc/armchina-npu/include/armchina_aipu.h
 new file mode 100755
-index 0000000000000..4c456bee2694b
+index 0000000000000000000000000000000000000000..4c456bee2694b83a0ddad1e143d24d89444256c1
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/include/armchina_aipu.h
 @@ -0,0 +1,699 @@
@@ -7847,7 +7759,7 @@ index 0000000000000..4c456bee2694b
 +#endif /* __UAPI_MISC_ARMCHINA_AIPU_H__ */
 diff --git a/drivers/misc/armchina-npu/include/armchina_aipu_soc.h b/drivers/misc/armchina-npu/include/armchina_aipu_soc.h
 new file mode 100755
-index 0000000000000..c235f4071ec9e
+index 0000000000000000000000000000000000000000..c235f4071ec9e1e2a545af9c699f7b20a660d77c
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/include/armchina_aipu_soc.h
 @@ -0,0 +1,54 @@
@@ -7907,7 +7819,7 @@ index 0000000000000..c235f4071ec9e
 +#endif /* __AIPU_SOC_H__ */
 diff --git a/drivers/misc/armchina-npu/include/cix_sky1_soc.h b/drivers/misc/armchina-npu/include/cix_sky1_soc.h
 new file mode 100644
-index 0000000000000..c60b5b906df06
+index 0000000000000000000000000000000000000000..c60b5b906df066b688814311f1a46ca48d0e5c41
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/include/cix_sky1_soc.h
 @@ -0,0 +1,25 @@
@@ -7938,7 +7850,7 @@ index 0000000000000..c60b5b906df06
 +#endif /* __CIX_SKY1_SOC_H__ */
 diff --git a/drivers/misc/armchina-npu/r329/Makefile b/drivers/misc/armchina-npu/r329/Makefile
 new file mode 100755
-index 0000000000000..ee65f24f594ec
+index 0000000000000000000000000000000000000000..ee65f24f594ec06dfa68e6a7579883d694c4fbc3
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/r329/Makefile
 @@ -0,0 +1,5 @@
@@ -7950,7 +7862,7 @@ index 0000000000000..ee65f24f594ec
 \ No newline at end of file
 diff --git a/drivers/misc/armchina-npu/r329/r329.c b/drivers/misc/armchina-npu/r329/r329.c
 new file mode 100755
-index 0000000000000..c21fe74c532a8
+index 0000000000000000000000000000000000000000..c21fe74c532a8acbae5aba214fead124ca09e0b9
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/r329/r329.c
 @@ -0,0 +1,160 @@
@@ -8116,7 +8028,7 @@ index 0000000000000..c21fe74c532a8
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/misc/armchina-npu/sky1/Makefile b/drivers/misc/armchina-npu/sky1/Makefile
 new file mode 100755
-index 0000000000000..d6538426fe3d1
+index 0000000000000000000000000000000000000000..d6538426fe3d1dfb9a6ab1dbe04196eaaeab6bfe
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/sky1/Makefile
 @@ -0,0 +1,5 @@
@@ -8128,7 +8040,7 @@ index 0000000000000..d6538426fe3d1
 \ No newline at end of file
 diff --git a/drivers/misc/armchina-npu/sky1/sky1.c b/drivers/misc/armchina-npu/sky1/sky1.c
 new file mode 100644
-index 0000000000000..80daab087e999
+index 0000000000000000000000000000000000000000..80daab087e99933e57607f613c0f06aa0ef09e58
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/sky1/sky1.c
 @@ -0,0 +1,568 @@
@@ -8702,7 +8614,7 @@ index 0000000000000..80daab087e999
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/misc/armchina-npu/zhouyi/Makefile b/drivers/misc/armchina-npu/zhouyi/Makefile
 new file mode 100755
-index 0000000000000..59ce047465377
+index 0000000000000000000000000000000000000000..59ce04746537759254c2d1886445419c31f3bc1f
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/Makefile
 @@ -0,0 +1,12 @@
@@ -8721,7 +8633,7 @@ index 0000000000000..59ce047465377
 \ No newline at end of file
 diff --git a/drivers/misc/armchina-npu/zhouyi/v1.c b/drivers/misc/armchina-npu/zhouyi/v1.c
 new file mode 100755
-index 0000000000000..92bbc630e087b
+index 0000000000000000000000000000000000000000..92bbc630e087bdeeec513797e7471c8f666c6e12
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v1.c
 @@ -0,0 +1,271 @@
@@ -8998,7 +8910,7 @@ index 0000000000000..92bbc630e087b
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/v1.h b/drivers/misc/armchina-npu/zhouyi/v1.h
 new file mode 100755
-index 0000000000000..ca85aac46f734
+index 0000000000000000000000000000000000000000..ca85aac46f734c1059c980a18a8538631beb75c4
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v1.h
 @@ -0,0 +1,34 @@
@@ -9038,7 +8950,7 @@ index 0000000000000..ca85aac46f734
 +#endif /* __V1_H__ */
 diff --git a/drivers/misc/armchina-npu/zhouyi/v1v2_priv.c b/drivers/misc/armchina-npu/zhouyi/v1v2_priv.c
 new file mode 100755
-index 0000000000000..54ff8d79bd125
+index 0000000000000000000000000000000000000000..54ff8d79bd125c95d152db43224b443e72451b80
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v1v2_priv.c
 @@ -0,0 +1,232 @@
@@ -9276,7 +9188,7 @@ index 0000000000000..54ff8d79bd125
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/v2.c b/drivers/misc/armchina-npu/zhouyi/v2.c
 new file mode 100755
-index 0000000000000..25eb6d876abf1
+index 0000000000000000000000000000000000000000..25eb6d876abf12a60cb11ec858e9a492e79cafeb
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v2.c
 @@ -0,0 +1,407 @@
@@ -9689,7 +9601,7 @@ index 0000000000000..25eb6d876abf1
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/v2.h b/drivers/misc/armchina-npu/zhouyi/v2.h
 new file mode 100755
-index 0000000000000..17e3e4133d5bd
+index 0000000000000000000000000000000000000000..17e3e4133d5bd18bdb976092b718bc3f4878ecfd
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v2.h
 @@ -0,0 +1,54 @@
@@ -9749,7 +9661,7 @@ index 0000000000000..17e3e4133d5bd
 +#endif /* __V2_H__ */
 diff --git a/drivers/misc/armchina-npu/zhouyi/v3.c b/drivers/misc/armchina-npu/zhouyi/v3.c
 new file mode 100755
-index 0000000000000..eec6aa05a542e
+index 0000000000000000000000000000000000000000..eec6aa05a542e453752ab0fe16e9e9aeb19f8aa6
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v3.c
 @@ -0,0 +1,523 @@
@@ -10278,7 +10190,7 @@ index 0000000000000..eec6aa05a542e
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/v3.h b/drivers/misc/armchina-npu/zhouyi/v3.h
 new file mode 100755
-index 0000000000000..2202a1ff30ee7
+index 0000000000000000000000000000000000000000..2202a1ff30ee72f242381b6b51807a86e8ddea9e
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v3.h
 @@ -0,0 +1,427 @@
@@ -10711,7 +10623,7 @@ index 0000000000000..2202a1ff30ee7
 +#endif /* __V3_H__ */
 diff --git a/drivers/misc/armchina-npu/zhouyi/v3_1.c b/drivers/misc/armchina-npu/zhouyi/v3_1.c
 new file mode 100755
-index 0000000000000..ff7fd5ec7b912
+index 0000000000000000000000000000000000000000..ff7fd5ec7b912c99ee1edf3a6d6631a015938990
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v3_1.c
 @@ -0,0 +1,374 @@
@@ -11091,7 +11003,7 @@ index 0000000000000..ff7fd5ec7b912
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/v3_1.h b/drivers/misc/armchina-npu/zhouyi/v3_1.h
 new file mode 100755
-index 0000000000000..128a6ab634eeb
+index 0000000000000000000000000000000000000000..128a6ab634eeb5041ea8f36f94f0436ad3f3b844
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v3_1.h
 @@ -0,0 +1,456 @@
@@ -11553,7 +11465,7 @@ index 0000000000000..128a6ab634eeb
 +#endif /* __V3_1_H__ */
 diff --git a/drivers/misc/armchina-npu/zhouyi/v3_1_priv.c b/drivers/misc/armchina-npu/zhouyi/v3_1_priv.c
 new file mode 100755
-index 0000000000000..eab534a878eb6
+index 0000000000000000000000000000000000000000..eab534a878eb6f89d2e51539e253ab093b808042
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v3_1_priv.c
 @@ -0,0 +1,159 @@
@@ -11718,7 +11630,7 @@ index 0000000000000..eab534a878eb6
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/v3_priv.c b/drivers/misc/armchina-npu/zhouyi/v3_priv.c
 new file mode 100644
-index 0000000000000..5d1e20079d940
+index 0000000000000000000000000000000000000000..5d1e20079d9404502de388f28cd3325db8a5c9d9
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/v3_priv.c
 @@ -0,0 +1,229 @@
@@ -11953,7 +11865,7 @@ index 0000000000000..5d1e20079d940
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/zhouyi.c b/drivers/misc/armchina-npu/zhouyi/zhouyi.c
 new file mode 100755
-index 0000000000000..95cf92eddf8f2
+index 0000000000000000000000000000000000000000..95cf92eddf8f28af19e31f52514aaba5e5774ed0
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/zhouyi.c
 @@ -0,0 +1,181 @@
@@ -12140,7 +12052,7 @@ index 0000000000000..95cf92eddf8f2
 +}
 diff --git a/drivers/misc/armchina-npu/zhouyi/zhouyi.h b/drivers/misc/armchina-npu/zhouyi/zhouyi.h
 new file mode 100755
-index 0000000000000..83ac0102f5311
+index 0000000000000000000000000000000000000000..83ac0102f5311587fb22ccb622af551e434febb3
 --- /dev/null
 +++ b/drivers/misc/armchina-npu/zhouyi/zhouyi.h
 @@ -0,0 +1,104 @@

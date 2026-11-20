@@ -18,7 +18,13 @@ audio restored every time. Can be turned off with
 trilin_dpsub.audio_reset=0 (writable at runtime).
 
 Signed-off-by: kennytech73 <contact@bookworm-mon0.org>
+
+[rebased on Linux 7.3.1 by BOOKWORM: context refreshed]
 ---
+ 1 file changed, 15 insertions(+)
+
+diff --git a/drivers/gpu/drm/cix/dptx/trilin_dptx.c b/drivers/gpu/drm/cix/dptx/trilin_dptx.c
+index 80b4e0ab809d0501d37c95c0c3b7bfd773391e5a..4cb026f8d4573e729f19b5e5f24c1bea9bed9018 100644
 --- a/drivers/gpu/drm/cix/dptx/trilin_dptx.c
 +++ b/drivers/gpu/drm/cix/dptx/trilin_dptx.c
 @@ -74,6 +74,17 @@ static uint trilin_dp_power_on_delay_ms = DEFUALT_DP_POWER_ON_DELAY_MS;
@@ -50,3 +56,4 @@ Signed-off-by: kennytech73 <contact@bookworm-mon0.org>
  	}
  
  	if (!trilin_dp_is_ready(dp)) {
+

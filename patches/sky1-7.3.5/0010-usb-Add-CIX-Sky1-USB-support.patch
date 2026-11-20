@@ -8,11 +8,13 @@ USB-C scan handler, PHY probe ordering, runtime PM,
 xhci-plat LPM auto-detection, and ACPI boot hardening.
 
 [ported to Linux 7.2 by BOOKWORM: conflicts with upstream 7.2 resolved]
+
+[ported to Linux 7.3.1 by BOOKWORM: conflicts with upstream resolved]
 ---
  9 files changed, 1719 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/usb/cdns3/Kconfig b/drivers/usb/cdns3/Kconfig
-index 39ad23d1a..09e1d1b46 100644
+index 39ad23d1ada8982ca87479795b93f26befe3845f..09e1d1b4685ecac8e200b441a5efed2b4193ed39 100644
 --- a/drivers/usb/cdns3/Kconfig
 +++ b/drivers/usb/cdns3/Kconfig
 @@ -97,6 +97,19 @@ config USB_CDNS3_IMX
@@ -36,7 +38,7 @@ index 39ad23d1a..09e1d1b46 100644
  	tristate "Cadence USB3 support on StarFive SoC platforms"
  	depends on ARCH_STARFIVE || COMPILE_TEST
 diff --git a/drivers/usb/cdns3/Makefile b/drivers/usb/cdns3/Makefile
-index b2e4ba6a4..ab813aaf9 100644
+index b2e4ba6a49a3648b6cf05a57ff0d0f65a8793176..ab813aaf9940a4a9c629ec4cbb0c200da29cedf3 100644
 --- a/drivers/usb/cdns3/Makefile
 +++ b/drivers/usb/cdns3/Makefile
 @@ -28,3 +28,4 @@ obj-$(CONFIG_USB_CDNSP_PCI)			+= cdnsp-pci.o
@@ -45,7 +47,7 @@ index b2e4ba6a4..ab813aaf9 100644
  obj-$(CONFIG_USB_CDNS3_STARFIVE)		+= cdns3-starfive.o
 +obj-$(CONFIG_USB_CDNSP_SKY1)			+= cdnsp-sky1.o
 diff --git a/drivers/usb/cdns3/cdns3-plat.c b/drivers/usb/cdns3/cdns3-plat.c
-index bb5405460..921a8a99f 100644
+index e3f32c3e9535261015ce4f15765dbbd60ee4d83b..9747a44452ffef759a62522d8fb434f31cebb2ee 100644
 --- a/drivers/usb/cdns3/cdns3-plat.c
 +++ b/drivers/usb/cdns3/cdns3-plat.c
 @@ -70,8 +70,12 @@ static int cdns3_plat_probe(struct platform_device *pdev)
@@ -70,14 +72,14 @@ index bb5405460..921a8a99f 100644
 +					       "cdns3,usb2-phy");
  	if (IS_ERR(cdns->usb2_phy))
  		return dev_err_probe(dev, PTR_ERR(cdns->usb2_phy),
- 				     "Failed to get cdn3,usb2-phy\n");
+ 				     "Failed to get cdns3,usb2-phy\n");
  
 -	cdns->usb3_phy = devm_phy_optional_get(dev, "cdns3,usb3-phy");
 +	cdns->usb3_phy = devm_phy_optional_get(dev, usbssp ? "cdnsp,usb3-phy" :
 +					       "cdns3,usb3-phy");
  	if (IS_ERR(cdns->usb3_phy))
  		return dev_err_probe(dev, PTR_ERR(cdns->usb3_phy),
- 				     "Failed to get cdn3,usb3-phy\n");
+ 				     "Failed to get cdns3,usb3-phy\n");
 @@ -187,7 +193,11 @@ static int cdns3_plat_probe(struct platform_device *pdev)
  	 * and we also needs a small delay to avoid frequently entering low
  	 * power mode.
@@ -101,7 +103,7 @@ index bb5405460..921a8a99f 100644
  MODULE_DEVICE_TABLE(of, of_cdns3_match);
 diff --git a/drivers/usb/cdns3/cdnsp-sky1.c b/drivers/usb/cdns3/cdnsp-sky1.c
 new file mode 100644
-index 000000000..ed61e2a92
+index 0000000000000000000000000000000000000000..ed61e2a928b14c383573d0dad7564073ea3b3d10
 --- /dev/null
 +++ b/drivers/usb/cdns3/cdnsp-sky1.c
 @@ -0,0 +1,913 @@
@@ -1020,7 +1022,7 @@ index 000000000..ed61e2a92
 +MODULE_DESCRIPTION("Cdnsp Sky1 Glue Layer");
 diff --git a/drivers/usb/cdns3/cdnsp-sky1.h b/drivers/usb/cdns3/cdnsp-sky1.h
 new file mode 100644
-index 000000000..82563bd10
+index 0000000000000000000000000000000000000000..82563bd1000bdcdbc7db541ace2385a692ca752e
 --- /dev/null
 +++ b/drivers/usb/cdns3/cdnsp-sky1.h
 @@ -0,0 +1,123 @@
@@ -1148,7 +1150,7 @@ index 000000000..82563bd10
 +
 +#endif /* __LINUX_CDNSP_SKY1_H */
 diff --git a/drivers/usb/host/xhci-plat.c b/drivers/usb/host/xhci-plat.c
-index 074d9c731..c6be3321c 100644
+index 6fd595f81a306acf8e43b44bac66376acf60ccf6..c6708b3352e587cb344235f3068df4c86d9a912a 100644
 --- a/drivers/usb/host/xhci-plat.c
 +++ b/drivers/usb/host/xhci-plat.c
 @@ -90,6 +90,19 @@ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
@@ -1187,7 +1189,7 @@ index 074d9c731..c6be3321c 100644
  	return 0;
  
 diff --git a/drivers/usb/typec/Kconfig b/drivers/usb/typec/Kconfig
-index 2f80c2792..fb2814cac 100644
+index 2f80c2792dbdaf8bc7e161924326eb9230569a76..fb2814cac8a977da6cdf50c4ee8cc14a138b2ff6 100644
 --- a/drivers/usb/typec/Kconfig
 +++ b/drivers/usb/typec/Kconfig
 @@ -110,6 +110,19 @@ config TYPEC_WUSB3801
@@ -1211,7 +1213,7 @@ index 2f80c2792..fb2814cac 100644
  
  source "drivers/usb/typec/altmodes/Kconfig"
 diff --git a/drivers/usb/typec/Makefile b/drivers/usb/typec/Makefile
-index 8a6a1c663..842c429e4 100644
+index 8a6a1c663eb699c2b65a7fe915eaaada2b52a6ab..842c429e45b65a354fc2aeda71c1e55370b5d930 100644
 --- a/drivers/usb/typec/Makefile
 +++ b/drivers/usb/typec/Makefile
 @@ -11,4 +11,5 @@ obj-$(CONFIG_TYPEC_HD3SS3220)	+= hd3ss3220.o
@@ -1222,7 +1224,7 @@ index 8a6a1c663..842c429e4 100644
  obj-$(CONFIG_TYPEC)		+= mux/
 diff --git a/drivers/usb/typec/rts5453.c b/drivers/usb/typec/rts5453.c
 new file mode 100644
-index 000000000..5521a00d4
+index 0000000000000000000000000000000000000000..5521a00d41d403bf8f84ea65b06bf584f746af9a
 --- /dev/null
 +++ b/drivers/usb/typec/rts5453.c
 @@ -0,0 +1,621 @@

@@ -12,10 +12,10 @@ Deux arbres git de travail, un tag `apres-NNNN` après chaque patch :
 
 | Arbre | Contenu | Rôle |
 |---|---|---|
-| `REF_TREE` (défaut `/usr/src/build/sky1-kernel/ref-7.0`) | base d'origine + série d'origine | **l'état voulu** par chaque patch |
-| `PORT_TREE` (défaut `.../port-7.2.11`) | nouvelle base + série portée | le portage en cours |
+| `REF_TREE` (défaut `/usr/src/build/sky1-kernel/port-7.3.1`) | base de référence + sa série | **l'état voulu** par chaque patch |
+| `PORT_TREE` (défaut `.../port-7.3.5`) | nouvelle base + série portée | le portage en cours |
 
-La série portée (`SERIES`, défaut `patches/sky1-7.2`) est modifiée **sur place** : faire un
+La série portée (`SERIES`, défaut `patches/sky1-7.3.5`) est modifiée **sur place** : faire un
 commit avant de commencer, `git diff` montre ensuite chaque changement.
 
 Paramètres dans `env.sh`, surchargeables par variable d'environnement
@@ -42,7 +42,7 @@ Paramètres dans `env.sh`, surchargeables par variable d'environnement
 ```bash
 cd tools/portage-sky1
 export PORT_TREE=/usr/src/build/sky1-kernel/port-7.3 SERIES=$PWD/../../patches/sky1-7.3 PORT_LABEL="Linux 7.3"
-cp -r ../../patches/sky1-7.2 "$SERIES" && git -C ../.. add patches/sky1-7.3 && git -C ../.. commit -m "sky1-7.3: copie de départ"
+cp -r ../../patches/sky1-7.3.5 "$SERIES" && git -C ../.. add patches/sky1-7.3 && git -C ../.. commit -m "sky1-7.3: copie de départ"
 
 ./init-tree.sh /usr/src/build/sky1-kernel/linux-7.3.tar.xz "$PORT_TREE"
 # REF_TREE : la base pour laquelle la série a été écrite + la série, tags compris.
@@ -83,4 +83,4 @@ patch -p1 -d "$PORT_TREE" --fuzz=3 -f < "$SERIES"/<num>-*.patch ; find "$PORT_TR
 - Simuler la config du build (`FORCE_BUILTIN` / `FORCE_DISABLED` du track) avant de rendre
   la main : c'est ce qui a révélé les options PHY disparues.
 
-Détail des décisions du portage 7.2 : `patches/sky1-7.2/README.md`.
+Détail des décisions des portages 7.2, 7.3.1 et 7.3.5 : `patches/sky1-7.3.5/README.md`.

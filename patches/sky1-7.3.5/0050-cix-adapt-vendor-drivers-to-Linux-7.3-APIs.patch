@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kennytech73 <contact@bookworm-mon0.org>
+Date: Fri, 30 Oct 2026 15:45:00 +0100
+Subject: [PATCH] cix: adapt vendor drivers to Linux 7.3 APIs
+
+Two kernel APIs used by this series changed in Linux 7.3:
+
+- drm: of_drm_get_panel_orientation() renamed to
+  drm_of_get_panel_orientation(), now declared in <drm/drm_of.h>
+  (cix_edp_panel).
+- usb: xhci HCS_U1_LATENCY / HCS_U2_LATENCY are now plain GENMASK()
+  field masks instead of function-like macros; use FIELD_GET() like the
+  rest of xhci (ACPI LPM auto-detection in xhci-plat).
+
+No functional change intended.
+
+[added for Linux 7.3.1 by BOOKWORM]
+---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/cix/dptx/cix_edp_panel.c b/drivers/gpu/drm/cix/dptx/cix_edp_panel.c
+index 9c9d6acebcb1ceabb509fbaa5ae510c4ee2a7543..37a67041d44f5e37445d6fc59947fff4ce4ff03e 100644
+--- a/drivers/gpu/drm/cix/dptx/cix_edp_panel.c
++++ b/drivers/gpu/drm/cix/dptx/cix_edp_panel.c
+@@ -38,6 +38,7 @@
+ 
+ #include <drm/drm_crtc.h>
+ #include <drm/drm_device.h>
++#include <drm/drm_of.h>
+ #include <drm/drm_panel.h>
+ #include <linux/acpi.h>
+ #include <linux/backlight.h>
+@@ -670,7 +671,7 @@ static int cix_edp_panel_probe(struct device *dev, const struct panel_desc *desc
+ 	if (has_acpi_companion(dev)) {
+ 		err = acpi_drm_get_panel_orientation(dev, &panel->orientation);
+ 	} else {
+-		err = of_drm_get_panel_orientation(dev->of_node, &panel->orientation);
++		err = drm_of_get_panel_orientation(dev->of_node, &panel->orientation);
+ 	}
+ 	
+ 	if (err) {
+diff --git a/drivers/usb/host/xhci-plat.c b/drivers/usb/host/xhci-plat.c
+index c6708b3352e587cb344235f3068df4c86d9a912a..d52e7bbd582062cb54ab298d443610dfa4c5ee59 100644
+--- a/drivers/usb/host/xhci-plat.c
++++ b/drivers/usb/host/xhci-plat.c
+@@ -100,8 +100,8 @@ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
+ 	 */
+ 	if (!(xhci->quirks & XHCI_LPM_SUPPORT) &&
+ 	    is_acpi_device_node(dev_fwnode(dev)) &&
+-	    (HCS_U1_LATENCY(xhci->hcs_params3) |
+-	     HCS_U2_LATENCY(xhci->hcs_params3)))
++	    (FIELD_GET(HCS_U1_LATENCY, xhci->hcs_params3) |
++	     FIELD_GET(HCS_U2_LATENCY, xhci->hcs_params3)))
+ 		xhci->quirks |= XHCI_LPM_SUPPORT;
+ }
+ 

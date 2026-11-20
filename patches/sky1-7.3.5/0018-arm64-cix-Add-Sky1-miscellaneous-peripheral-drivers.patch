@@ -10,6 +10,10 @@ bluetooth crash fix, pstore ACPI, SMMUv3 ATS override, SPE fix,
 and kernel DMA coherent helper.
 
 [rebased on Linux 7.2 by BOOKWORM: context refreshed]
+
+[rebased on Linux 7.3.1 by BOOKWORM: context refreshed]
+
+[rebased on Linux 7.3.5 by BOOKWORM: context refreshed]
 ---
  32 files changed, 3068 insertions(+), 215 deletions(-)
 
@@ -617,7 +621,7 @@ index 0000000000000000000000000000000000000000..e3bb0bc4c750f17591867ad54e38870e
 +MODULE_DESCRIPTION("DMABUF DSP heap exporter");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/dma/arm-dma350.c b/drivers/dma/arm-dma350.c
-index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c8f7ef81c 100644
+index 09403aca8bb06be81b1441a4e8e886451b4eaa6d..4522f4ea1d1cd2f48c03133fc6400eb3860d6caf 100644
 --- a/drivers/dma/arm-dma350.c
 +++ b/drivers/dma/arm-dma350.c
 @@ -2,13 +2,25 @@
@@ -646,7 +650,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  
  #include "dmaengine.h"
  #include "virt-dma.h"
-@@ -51,6 +63,7 @@
+@@ -56,6 +68,7 @@
  #define CH_STAT_DONE		BIT(16)
  #define CH_STAT_INTR_ERR	BIT(1)
  #define CH_STAT_INTR_DONE	BIT(0)
@@ -654,7 +658,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  
  #define CH_INTREN		0x08
  #define CH_INTREN_ERR		BIT(1)
-@@ -107,6 +120,25 @@
+@@ -112,6 +125,25 @@
  
  #define CH_LINKADDRHI		0x7c
  #define CH_ERRINFO		0x90
@@ -680,7 +684,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  #define CH_ERRINFO_AXIRDPOISERR BIT(18)
  #define CH_ERRINFO_AXIWRRESPERR BIT(17)
  #define CH_ERRINFO_AXIRDRESPERR BIT(16)
-@@ -122,6 +154,13 @@
+@@ -127,6 +159,13 @@
  #define CH_CFG_HAS_TRIGIN	BIT(5)
  #define CH_CFG_HAS_WRAP		BIT(1)
  
@@ -694,7 +698,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  
  #define LINK_REGCLEAR		BIT(0)
  #define LINK_INTREN		BIT(2)
-@@ -174,6 +213,26 @@ struct d350_desc {
+@@ -179,6 +218,26 @@ struct d350_desc {
  	u16 xsize;
  	u16 xsizehi;
  	u8 tsz;
@@ -721,7 +725,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  };
  
  struct d350_chan {
-@@ -188,10 +247,32 @@ struct d350_chan {
+@@ -193,10 +252,32 @@ struct d350_chan {
  	bool has_trig;
  	bool has_wrap;
  	bool coherent;
@@ -754,7 +758,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	int nchan;
  	int nreq;
  	struct d350_chan channels[] __counted_by(nchan);
-@@ -207,9 +288,192 @@ static inline struct d350_desc *to_d350_desc(struct virt_dma_desc *vd)
+@@ -212,9 +293,192 @@ static inline struct d350_desc *to_d350_desc(struct virt_dma_desc *vd)
  	return container_of(vd, struct d350_desc, vd);
  }
  
@@ -948,7 +952,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  }
  
  static struct dma_async_tx_descriptor *d350_prep_memcpy(struct dma_chan *chan,
-@@ -341,13 +605,22 @@ static int d350_terminate_all(struct dma_chan *chan)
+@@ -346,13 +610,22 @@ static int d350_terminate_all(struct dma_chan *chan)
  	LIST_HEAD(list);
  
  	spin_lock_irqsave(&dch->vc.lock, flags);
@@ -971,7 +975,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	vchan_get_all_descriptors(&dch->vc, &list);
  	list_splice_tail(&list, &dch->vc.desc_terminated);
  	spin_unlock_irqrestore(&dch->vc.lock, flags);
-@@ -381,11 +654,31 @@ static enum dma_status d350_tx_status(struct dma_chan *chan, dma_cookie_t cookie
+@@ -386,11 +659,31 @@ static enum dma_status d350_tx_status(struct dma_chan *chan, dma_cookie_t cookie
  	spin_lock_irqsave(&dch->vc.lock, flags);
  	if (cookie == dch->cookie) {
  		status = dch->status;
@@ -1007,7 +1011,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	} else if (status == DMA_IN_PROGRESS) {
  		/* Somebody else terminated it? */
  		status = DMA_ERROR;
-@@ -396,6 +689,86 @@ static enum dma_status d350_tx_status(struct dma_chan *chan, dma_cookie_t cookie
+@@ -401,6 +694,86 @@ static enum dma_status d350_tx_status(struct dma_chan *chan, dma_cookie_t cookie
  	return status;
  }
  
@@ -1094,7 +1098,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  static void d350_start_next(struct d350_chan *dch)
  {
  	u32 hdr, *reg;
-@@ -404,9 +777,25 @@ static void d350_start_next(struct d350_chan *dch)
+@@ -409,9 +782,25 @@ static void d350_start_next(struct d350_chan *dch)
  	if (!dch->desc)
  		return;
  
@@ -1121,7 +1125,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	dch->residue = d350_desc_bytes(dch->desc);
  
  	hdr = dch->desc->command[0];
-@@ -464,17 +853,39 @@ static void d350_issue_pending(struct dma_chan *chan)
+@@ -469,17 +858,39 @@ static void d350_issue_pending(struct dma_chan *chan)
  static irqreturn_t d350_irq(int irq, void *data)
  {
  	struct d350_chan *dch = data;
@@ -1166,7 +1170,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  		if (errinfo & (CH_ERRINFO_AXIRDPOISERR | CH_ERRINFO_AXIRDRESPERR))
  			vd->tx_result.result = DMA_TRANS_READ_FAILED;
  		else if (errinfo & CH_ERRINFO_AXIWRRESPERR)
-@@ -483,21 +894,48 @@ static irqreturn_t d350_irq(int irq, void *data)
+@@ -488,21 +899,48 @@ static irqreturn_t d350_irq(int irq, void *data)
  			vd->tx_result.result = DMA_TRANS_ABORTED;
  
  		vd->tx_result.residue = d350_get_residue(dch);
@@ -1227,7 +1231,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	spin_unlock(&dch->vc.lock);
  
  	return IRQ_HANDLED;
-@@ -506,12 +944,30 @@ static irqreturn_t d350_irq(int irq, void *data)
+@@ -511,12 +949,30 @@ static irqreturn_t d350_irq(int irq, void *data)
  static int d350_alloc_chan_resources(struct dma_chan *chan)
  {
  	struct d350_chan *dch = to_d350_chan(chan);
@@ -1263,7 +1267,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  }
  
  static void d350_free_chan_resources(struct dma_chan *chan)
-@@ -523,10 +979,271 @@ static void d350_free_chan_resources(struct dma_chan *chan)
+@@ -528,10 +984,271 @@ static void d350_free_chan_resources(struct dma_chan *chan)
  	vchan_free_chan_resources(&dch->vc);
  }
  
@@ -1535,7 +1539,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	void __iomem *base;
  	u32 reg;
  	int ret, nchan, dw, aw, r, p;
-@@ -536,12 +1253,89 @@ static int d350_probe(struct platform_device *pdev)
+@@ -541,12 +1258,89 @@ static int d350_probe(struct platform_device *pdev)
  	if (IS_ERR(base))
  		return PTR_ERR(base);
  
@@ -1627,7 +1631,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  
  	reg = readl_relaxed(base + DMAINFO + DMA_BUILDCFG0);
  	nchan = FIELD_GET(DMA_CFG_NUM_CHANNELS, reg) + 1;
-@@ -552,14 +1346,87 @@ static int d350_probe(struct platform_device *pdev)
+@@ -557,14 +1351,87 @@ static int d350_probe(struct platform_device *pdev)
  	coherent = device_get_dma_attr(dev) == DEV_DMA_COHERENT;
  
  	dmac = devm_kzalloc(dev, struct_size(dmac, channels, nchan), GFP_KERNEL);
@@ -1717,7 +1721,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	dev_dbg(dev, "DMA-350 r%dp%d with %d channels, %d requests\n", r, p, dmac->nchan, dmac->nreq);
  
  	dmac->dma.dev = dev;
-@@ -567,13 +1434,19 @@ static int d350_probe(struct platform_device *pdev)
+@@ -572,13 +1439,19 @@ static int d350_probe(struct platform_device *pdev)
  		dmac->dma.src_addr_widths |= BIT(i);
  		dmac->dma.dst_addr_widths |= BIT(i);
  	}
@@ -1738,7 +1742,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  	dmac->dma.device_pause = d350_pause;
  	dmac->dma.device_resume = d350_resume;
  	dmac->dma.device_terminate_all = d350_terminate_all;
-@@ -595,10 +1468,21 @@ static int d350_probe(struct platform_device *pdev)
+@@ -604,10 +1477,21 @@ static int d350_probe(struct platform_device *pdev)
  			dev_warn(dev, "No command link support on channel %d\n", i);
  			continue;
  		}
@@ -1764,7 +1768,7 @@ index 84220fa83029d1d521d606ac26523f352f2b3c96..fbc502d1c3b1043dd432dba50a8b996c
  
  		dch->has_wrap = FIELD_GET(CH_CFG_HAS_WRAP, reg);
  		dch->has_trig = FIELD_GET(CH_CFG_HAS_TRIGIN, reg) &
-@@ -623,32 +1507,108 @@ static int d350_probe(struct platform_device *pdev)
+@@ -632,32 +1516,108 @@ static int d350_probe(struct platform_device *pdev)
  		dmac->dma.device_prep_dma_memset = d350_prep_memset;
  	}
  
@@ -2379,10 +2383,10 @@ index d7790fc35c2245e67528755b768d903310b53af1..5c11aceedeb827b5c364d078b00c535c
  module_platform_driver(cdns_gpio_driver);
  
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
-index 2bfbcc033d599ce2eacd57c8ca64746f87519353..d016d3ffcadf598c5ecc81b3578a7b14ec54ba0f 100644
+index fecff8610ea8ba69af19da22f63c55bcf5f3773a..03cf1dbee6a0bb5f28765f60eecee6880ef39c35 100644
 --- a/drivers/hwmon/Kconfig
 +++ b/drivers/hwmon/Kconfig
-@@ -489,6 +489,19 @@ config SENSORS_CHIPCAP2
+@@ -498,6 +498,19 @@ config SENSORS_CHIPCAP2
  	  To compile this driver as a module, choose M here: the module
  	  will be called chipcap2.
  
@@ -2403,7 +2407,7 @@ index 2bfbcc033d599ce2eacd57c8ca64746f87519353..d016d3ffcadf598c5ecc81b3578a7b14
  	tristate "Corsair Commander Pro controller"
  	depends on HID
 diff --git a/drivers/hwmon/Makefile b/drivers/hwmon/Makefile
-index 63effc0ab8d113fd82a8c5cafa0ee0e3e144217f..9a668fc2c163c41bb6e1eb733f6b5b276d116a71 100644
+index 1229b6b3996d79e15d45ed431b63073991bc7b98..6882a8104ee958c3011f7ceb667cd0aa279a6e56 100644
 --- a/drivers/hwmon/Makefile
 +++ b/drivers/hwmon/Makefile
 @@ -61,6 +61,7 @@ obj-$(CONFIG_SENSORS_ATXP1)	+= atxp1.o
@@ -2627,7 +2631,7 @@ index da8770182a18624647b9400ad060e811567764f2..3f9e4695cf900e2aa2a361902dae6a53
  	},
  	.probe  = cdns_i2c_probe,
 diff --git a/drivers/i3c/master/i3c-master-cdns.c b/drivers/i3c/master/i3c-master-cdns.c
-index 6d221596ea35779b079c2b2e55d41a38aeaf9eaf..d968ba452bbea3072455a116f2e45b0a5e13c556 100644
+index 2d98c1ce9b12a02394f3221d29d709f574b853fa..f4d4ccd0782e0fb192972c0bcd86164ec17a510a 100644
 --- a/drivers/i3c/master/i3c-master-cdns.c
 +++ b/drivers/i3c/master/i3c-master-cdns.c
 @@ -5,6 +5,7 @@
@@ -2638,7 +2642,7 @@ index 6d221596ea35779b079c2b2e55d41a38aeaf9eaf..d968ba452bbea3072455a116f2e45b0a
  #include <linux/bitops.h>
  #include <linux/clk.h>
  #include <linux/err.h>
-@@ -1537,6 +1538,14 @@ static const struct of_device_id cdns_i3c_master_of_ids[] = {
+@@ -1540,6 +1541,14 @@ static const struct of_device_id cdns_i3c_master_of_ids[] = {
  };
  MODULE_DEVICE_TABLE(of, cdns_i3c_master_of_ids);
  
@@ -2653,7 +2657,7 @@ index 6d221596ea35779b079c2b2e55d41a38aeaf9eaf..d968ba452bbea3072455a116f2e45b0a
  static int cdns_i3c_master_probe(struct platform_device *pdev)
  {
  	struct cdns_i3c_master *master;
-@@ -1625,6 +1634,7 @@ static struct platform_driver cdns_i3c_master = {
+@@ -1628,6 +1637,7 @@ static struct platform_driver cdns_i3c_master = {
  	.driver = {
  		.name = "cdns-i3c-master",
  		.of_match_table = cdns_i3c_master_of_ids,
@@ -2662,10 +2666,10 @@ index 6d221596ea35779b079c2b2e55d41a38aeaf9eaf..d968ba452bbea3072455a116f2e45b0a
  };
  module_platform_driver(cdns_i3c_master);
 diff --git a/drivers/input/keyboard/gpio_keys.c b/drivers/input/keyboard/gpio_keys.c
-index e196174856796b391f14c31da9b2fee5ff742172..ba031efc72671cebef1f51a5ee3d6f1f1fa3774f 100644
+index 129fc4212a5ed126496b331ce626682d441c53bf..d84b8369944624c86443ce32b944b2d858a14d69 100644
 --- a/drivers/input/keyboard/gpio_keys.c
 +++ b/drivers/input/keyboard/gpio_keys.c
-@@ -596,7 +596,21 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
+@@ -597,7 +597,21 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
  			      CLOCK_REALTIME, HRTIMER_MODE_REL);
  
  		isr = gpio_keys_gpio_isr;
@@ -2689,10 +2693,10 @@ index e196174856796b391f14c31da9b2fee5ff742172..ba031efc72671cebef1f51a5ee3d6f1f
  		switch (button->wakeup_event_action) {
  		case EV_ACT_ASSERTED:
 diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
-index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5bde3d3b0 100644
+index b510dd47f23155a85b86d4eaf2f362725fe92155..dbccb78a2c5798ae4c301aa5d099e5ca850ac200 100644
 --- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
 +++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
-@@ -82,6 +82,7 @@ DEFINE_MUTEX(arm_smmu_asid_lock);
+@@ -91,6 +91,7 @@ DEFINE_MUTEX(arm_smmu_asid_lock);
  static struct arm_smmu_option_prop arm_smmu_options[] = {
  	{ ARM_SMMU_OPT_SKIP_PREFETCH, "hisilicon,broken-prefetch-cmd" },
  	{ ARM_SMMU_OPT_PAGE0_REGS_ONLY, "cavium,cn9900-broken-page1-regspace"},
@@ -2700,7 +2704,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  	{ 0, NULL},
  };
  
-@@ -89,7 +90,9 @@ static const char * const event_str[] = {
+@@ -98,7 +99,9 @@ static const char * const event_str[] = {
  	[EVT_ID_BAD_STREAMID_CONFIG] = "C_BAD_STREAMID",
  	[EVT_ID_STE_FETCH_FAULT] = "F_STE_FETCH",
  	[EVT_ID_BAD_STE_CONFIG] = "C_BAD_STE",
@@ -2710,7 +2714,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  	[EVT_ID_BAD_SUBSTREAMID_CONFIG] = "C_BAD_SUBSTREAMID",
  	[EVT_ID_CD_FETCH_FAULT] = "F_CD_FETCH",
  	[EVT_ID_BAD_CD_CONFIG] = "C_BAD_CD",
-@@ -1835,7 +1838,10 @@ void arm_smmu_make_cdtable_ste(struct arm_smmu_ste *target,
+@@ -1900,7 +1903,10 @@ void arm_smmu_make_cdtable_ste(struct arm_smmu_ste *target,
  			 STRTAB_STE_1_S1STALLD :
  			 0) |
  		FIELD_PREP(STRTAB_STE_1_EATS,
@@ -2722,7 +2726,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  
  	if ((smmu->features & ARM_SMMU_FEAT_ATTR_TYPES_OVR) &&
  	    s1dss == STRTAB_STE_1_S1DSS_BYPASS)
-@@ -1887,7 +1893,10 @@ void arm_smmu_make_s2_domain_ste(struct arm_smmu_ste *target,
+@@ -1952,7 +1958,10 @@ void arm_smmu_make_s2_domain_ste(struct arm_smmu_ste *target,
  
  	target->data[1] = cpu_to_le64(
  		FIELD_PREP(STRTAB_STE_1_EATS,
@@ -2734,7 +2738,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  
  	if (pgtbl_cfg->quirks & IO_PGTABLE_QUIRK_ARM_S2FWB)
  		target->data[1] |= cpu_to_le64(STRTAB_STE_1_S2FWB);
-@@ -2038,6 +2047,7 @@ static int arm_smmu_handle_event(struct arm_smmu_device *smmu, u64 *evt,
+@@ -2103,6 +2112,7 @@ static int arm_smmu_handle_event(struct arm_smmu_device *smmu, u64 *evt,
  	switch (event->id) {
  	case EVT_ID_BAD_STE_CONFIG:
  	case EVT_ID_STREAM_DISABLED_FAULT:
@@ -2742,7 +2746,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  	case EVT_ID_BAD_SUBSTREAMID_CONFIG:
  	case EVT_ID_BAD_CD_CONFIG:
  	case EVT_ID_TRANSLATION_FAULT:
-@@ -2152,6 +2162,39 @@ static void arm_smmu_dump_event(struct arm_smmu_device *smmu, u64 *raw,
+@@ -2217,6 +2227,39 @@ static void arm_smmu_dump_event(struct arm_smmu_device *smmu, u64 *raw,
  	}
  }
  
@@ -2782,7 +2786,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  static irqreturn_t arm_smmu_evtq_thread(int irq, void *dev)
  {
  	u64 evt[EVTQ_ENT_DWORDS];
-@@ -2165,9 +2208,11 @@ static irqreturn_t arm_smmu_evtq_thread(int irq, void *dev)
+@@ -2230,9 +2273,11 @@ static irqreturn_t arm_smmu_evtq_thread(int irq, void *dev)
  	do {
  		while (!queue_remove_raw(q, evt)) {
  			arm_smmu_decode_event(smmu, evt, &event);
@@ -2795,7 +2799,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  			put_device(event.dev);
  			cond_resched();
  		}
-@@ -5351,6 +5396,43 @@ static void __iomem *arm_smmu_ioremap(struct device *dev, resource_size_t start,
+@@ -5484,6 +5529,43 @@ static void __iomem *arm_smmu_ioremap(struct device *dev, resource_size_t start,
  	return devm_ioremap_resource(dev, &res);
  }
  
@@ -2839,7 +2843,7 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  static void arm_smmu_rmr_install_bypass_ste(struct arm_smmu_device *smmu)
  {
  	struct list_head rmr_list;
-@@ -5517,6 +5599,9 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
+@@ -5650,6 +5732,9 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
  	/* Check for RMRs and install bypass STEs if any */
  	arm_smmu_rmr_install_bypass_ste(smmu);
  
@@ -2850,10 +2854,10 @@ index b52dae11fbbef0aa40f8518e5803b77f0af50c6f..fab0ca879da049f991bb776bc2aea4b5
  	ret = arm_smmu_device_reset(smmu);
  	if (ret) {
 diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
-index 6859570248e9e8a72f5d1c365287d08131564f9a..11c9cd4b8209a065ad9c8d06dc4b1adacc870997 100644
+index 094ce28c862f5a01d7664ff78096015c63966e2f..f9f7716546dc71f2fc8e0c29140736f91dee454c 100644
 --- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
 +++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
-@@ -610,7 +610,9 @@ arm_smmu_make_cmd_tlbi(enum arm_smmu_cmdq_opcode op, u16 asid, u16 vmid)
+@@ -611,7 +611,9 @@ arm_smmu_make_cmd_tlbi(enum arm_smmu_cmdq_opcode op, u16 asid, u16 vmid)
  #define EVT_ID_BAD_STREAMID_CONFIG	0x02
  #define EVT_ID_STE_FETCH_FAULT		0x03
  #define EVT_ID_BAD_STE_CONFIG		0x04
@@ -2863,15 +2867,15 @@ index 6859570248e9e8a72f5d1c365287d08131564f9a..11c9cd4b8209a065ad9c8d06dc4b1ada
  #define EVT_ID_BAD_SUBSTREAMID_CONFIG	0x08
  #define EVT_ID_CD_FETCH_FAULT		0x09
  #define EVT_ID_BAD_CD_CONFIG		0x0a
-@@ -932,6 +934,7 @@ struct arm_smmu_device {
+@@ -934,6 +936,7 @@ struct arm_smmu_device {
  #define ARM_SMMU_OPT_MSIPOLL		(1 << 2)
  #define ARM_SMMU_OPT_CMDQ_FORCE_SYNC	(1 << 3)
  #define ARM_SMMU_OPT_TEGRA241_CMDQV	(1 << 4)
 +#define ARM_SMMU_OPT_PCIE_ATS_OVERRIDE	(1 << 5)
- 	u32				options;
- 
- 	struct arm_smmu_cmdq		cmdq;
-@@ -961,6 +964,14 @@ struct arm_smmu_device {
+ /*
+  * Range invalidation is mandatory and one range invalidation must fully span an
+  * invalidated CONT
+@@ -968,6 +971,14 @@ struct arm_smmu_device {
  
  	struct rb_root			streams;
  	struct mutex			streams_mutex;
@@ -2887,7 +2891,7 @@ index 6859570248e9e8a72f5d1c365287d08131564f9a..11c9cd4b8209a065ad9c8d06dc4b1ada
  
  struct arm_smmu_stream {
 diff --git a/drivers/perf/arm_spe_pmu.c b/drivers/perf/arm_spe_pmu.c
-index b64cf2313a20cb35a674950d3697e9d144d96765..53999dca8e7c34bf2fdfa9f7f79a7029606fb445 100644
+index b70f3fedf0282baba1395ce1116272ec5f961ea8..25a090222f119bad42e09c6aa30bfbef47260798 100644
 --- a/drivers/perf/arm_spe_pmu.c
 +++ b/drivers/perf/arm_spe_pmu.c
 @@ -1234,6 +1234,15 @@ static void __arm_spe_pmu_dev_probe(void *info)
@@ -2929,7 +2933,7 @@ index b64cf2313a20cb35a674950d3697e9d144d96765..53999dca8e7c34bf2fdfa9f7f79a7029
  	__arm_spe_pmu_reset_local();
  }
 diff --git a/drivers/pwm/Kconfig b/drivers/pwm/Kconfig
-index e8886a9b64d9689d86920cc0d897231a1cfc06cc..45592c34bfb093bc5e938f235f000a6c94a1eb7f 100644
+index 729776086879030d206c3f0e65aee51212ff9888..4d11a1ba1b414ddf8a3c9c69c5c7b0e1f0d1b6bf 100644
 --- a/drivers/pwm/Kconfig
 +++ b/drivers/pwm/Kconfig
 @@ -854,7 +854,16 @@ config PWM_XILINX
@@ -3304,7 +3308,7 @@ index 417d282dd4ed70971f2b50e0acd1e5c473d15fb2..2fb58312a8ee43a7ecff3c760b5fe3b9
  	drvdata->desc.name = devm_kstrdup(&pdev->dev,
  					  config->supply_name,
 diff --git a/drivers/rtc/rtc-hym8563.c b/drivers/rtc/rtc-hym8563.c
-index 3156aa5f2d9ff2645775d8dd508ff93abe4ddac8..94da6677da3438f8b69f68f54e6ef8d9bdd2e3d0 100644
+index 1d52cc3def02ef2203750d542a5adb74c78b48b2..def78cd8c63d7de07d56bd6303150938afd70dc3 100644
 --- a/drivers/rtc/rtc-hym8563.c
 +++ b/drivers/rtc/rtc-hym8563.c
 @@ -162,19 +162,28 @@ static int hym8563_rtc_alarm_irq_enable(struct device *dev,
@@ -3522,7 +3526,7 @@ index 3156aa5f2d9ff2645775d8dd508ff93abe4ddac8..94da6677da3438f8b69f68f54e6ef8d9
  
  #ifdef CONFIG_COMMON_CLK
 diff --git a/drivers/spi/spi-cadence-quadspi.c b/drivers/spi/spi-cadence-quadspi.c
-index ecb0be39469651749d3e80bfc69da2b296e75038..39f82d3bac02966a3548ea5584cb86221196c536 100644
+index 5a5f1a852cbe83edc8f525d9502194ae4bfc9113..c9643397dc17bde3a00e015f74a06cd0cd4c7462 100644
 --- a/drivers/spi/spi-cadence-quadspi.c
 +++ b/drivers/spi/spi-cadence-quadspi.c
 @@ -6,6 +6,7 @@
@@ -3533,7 +3537,7 @@ index ecb0be39469651749d3e80bfc69da2b296e75038..39f82d3bac02966a3548ea5584cb8622
  #include <linux/clk.h>
  #include <linux/completion.h>
  #include <linux/delay.h>
-@@ -2201,6 +2202,14 @@ static const struct of_device_id cqspi_dt_ids[] = {
+@@ -2200,6 +2201,14 @@ static const struct of_device_id cqspi_dt_ids[] = {
  
  MODULE_DEVICE_TABLE(of, cqspi_dt_ids);
  
@@ -3548,7 +3552,7 @@ index ecb0be39469651749d3e80bfc69da2b296e75038..39f82d3bac02966a3548ea5584cb8622
  static struct platform_driver cqspi_platform_driver = {
  	.probe = cqspi_probe,
  	.remove = cqspi_remove,
-@@ -2208,6 +2217,7 @@ static struct platform_driver cqspi_platform_driver = {
+@@ -2207,6 +2216,7 @@ static struct platform_driver cqspi_platform_driver = {
  		.name = CQSPI_NAME,
  		.pm = pm_ptr(&cqspi_dev_pm_ops),
  		.of_match_table = cqspi_dt_ids,
@@ -3557,7 +3561,7 @@ index ecb0be39469651749d3e80bfc69da2b296e75038..39f82d3bac02966a3548ea5584cb8622
  };
  
 diff --git a/drivers/spi/spi-cadence.c b/drivers/spi/spi-cadence.c
-index af1a05e7849211609af63c818a4a716d75677ce8..de53c486b49b93bf5791eb7dc5420e00846d73cb 100644
+index 50ef3a7871c22918cb7d61bc7117a69a158e48d5..9f6cceebb0c8866c3930864eabd44659ccfc0c9c 100644
 --- a/drivers/spi/spi-cadence.c
 +++ b/drivers/spi/spi-cadence.c
 @@ -7,6 +7,7 @@
@@ -3568,7 +3572,7 @@ index af1a05e7849211609af63c818a4a716d75677ce8..de53c486b49b93bf5791eb7dc5420e00
  #include <linux/clk.h>
  #include <linux/delay.h>
  #include <linux/gpio/consumer.h>
-@@ -893,6 +894,14 @@ static const struct of_device_id cdns_spi_of_match[] = {
+@@ -892,6 +893,14 @@ static const struct of_device_id cdns_spi_of_match[] = {
  };
  MODULE_DEVICE_TABLE(of, cdns_spi_of_match);
  
@@ -3583,12 +3587,12 @@ index af1a05e7849211609af63c818a4a716d75677ce8..de53c486b49b93bf5791eb7dc5420e00
  /* cdns_spi_driver - This structure defines the SPI subsystem platform driver */
  static struct platform_driver cdns_spi_driver = {
  	.probe	= cdns_spi_probe,
-@@ -900,6 +909,7 @@ static struct platform_driver cdns_spi_driver = {
+@@ -899,6 +908,7 @@ static struct platform_driver cdns_spi_driver = {
  	.driver = {
  		.name = CDNS_SPI_NAME,
  		.of_match_table = cdns_spi_of_match,
 +		.acpi_match_table = ACPI_PTR(cdns_spi_acpi_match),
- 		.pm = &cdns_spi_dev_pm_ops,
+ 		.pm = pm_ptr(&cdns_spi_dev_pm_ops),
  	},
  };
 diff --git a/drivers/video/backlight/pwm_bl.c b/drivers/video/backlight/pwm_bl.c
@@ -3714,10 +3718,10 @@ index 237d3d3f3bb1a6d713c5f6ec3198af772bf1268c..440f65a396129d4063af72e1dbe5dcba
  	.probe		= pwm_backlight_probe,
  	.remove		= pwm_backlight_remove,
 diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
-index 08cb8612d41fe96d656db8edee0a43126658c262..1584362c8f921887e21bed904048f90f26dda7a3 100644
+index f7d0a0c2c0ef1686754727bad0ba69883e2fc83e..0fd6ef0c307756781a2c808adac7e61fa2e0de7d 100644
 --- a/drivers/watchdog/Kconfig
 +++ b/drivers/watchdog/Kconfig
-@@ -2352,4 +2352,14 @@ config GUNYAH_WATCHDOG
+@@ -2392,4 +2392,14 @@ config GUNYAH_WATCHDOG
  	  To compile this driver as a module, choose M here: the
  	  module will be called gunyah_wdt.
  
@@ -3733,10 +3737,10 @@ index 08cb8612d41fe96d656db8edee0a43126658c262..1584362c8f921887e21bed904048f90f
 +
  endif # WATCHDOG
 diff --git a/drivers/watchdog/Makefile b/drivers/watchdog/Makefile
-index bc1d52220f223abd96c73a4f51ebb9d4313c79cc..8d6790b7f627af33bf51372be264bb23bdd726b8 100644
+index 9ac406677aba590538e1c9aa1d833df9cd116399..5fea9429f0165225fe6fea5e3bb32875fd38c079 100644
 --- a/drivers/watchdog/Makefile
 +++ b/drivers/watchdog/Makefile
-@@ -241,3 +241,4 @@ obj-$(CONFIG_MENZ069_WATCHDOG) += menz69_wdt.o
+@@ -244,3 +244,4 @@ obj-$(CONFIG_MENZ069_WATCHDOG) += menz69_wdt.o
  obj-$(CONFIG_RAVE_SP_WATCHDOG) += rave-sp-wdt.o
  obj-$(CONFIG_STPMIC1_WATCHDOG) += stpmic1_wdt.o
  obj-$(CONFIG_SL28CPLD_WATCHDOG) += sl28cpld_wdt.o
@@ -4314,7 +4318,7 @@ index 2eb0d4fa218695cabe4a386908d65fbb989bcf5e..1a5982ce6cbac8b813e6f82142e7dbd3
  
  	if (!pdata->mem_size || (!pdata->record_size && !pdata->console_size &&
 diff --git a/kernel/dma/coherent.c b/kernel/dma/coherent.c
-index b6fe902c6a6db1f771b5410130800e8c7a1d746b..e386a01e379ea6a43ebc9d764a6f76044ddf4687 100644
+index 4d0266893bcc9943b142dfce15752504ea9be088..59e0c6017e0fd69dee4e1648c4725119d0c65f41 100644
 --- a/kernel/dma/coherent.c
 +++ b/kernel/dma/coherent.c
 @@ -45,7 +45,14 @@ static struct dma_coherent_mem *dma_init_coherent_memory(phys_addr_t phys_addr,

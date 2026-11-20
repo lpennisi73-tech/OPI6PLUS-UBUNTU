@@ -7,11 +7,15 @@ Add ACPI probe support, MCFG quirk, vendor scan handler,
 ASPM control, regulator handling, and I/O BAR warnings.
 
 [ported to Linux 7.2 by BOOKWORM: conflicts with upstream 7.2 resolved]
+
+[ported to Linux 7.3.1 by BOOKWORM: conflicts with upstream resolved]
+
+[ported to Linux 7.3.5 by BOOKWORM: conflicts with upstream resolved]
 ---
- 15 files changed, 5467 insertions(+), 399 deletions(-)
+ 16 files changed, 5465 insertions(+), 620 deletions(-)
 
 diff --git a/drivers/acpi/pci_mcfg.c b/drivers/acpi/pci_mcfg.c
-index 0782a5d83..b6f88b50a 100644
+index 0782a5d839bf02f8174c32fcb59a9b92f8305eb1..b6f88b50a484ecd06e94e3eb6636b3fa8c1f20e1 100644
 --- a/drivers/acpi/pci_mcfg.c
 +++ b/drivers/acpi/pci_mcfg.c
 @@ -171,6 +171,7 @@ static struct mcfg_fixup mcfg_quirks[] = {
@@ -23,10 +27,26 @@ index 0782a5d83..b6f88b50a 100644
  
  #ifdef CONFIG_LOONGARCH
 diff --git a/drivers/pci/controller/cadence/Kconfig b/drivers/pci/controller/cadence/Kconfig
-index fd704dec4..b26263dde 100644
+index 69efd7582369e0f597a628dc25d6f4d877d64c30..b26263dde583544a26bab674b01f69c187ab4376 100644
 --- a/drivers/pci/controller/cadence/Kconfig
 +++ b/drivers/pci/controller/cadence/Kconfig
-@@ -19,12 +19,12 @@ config PCIE_CADENCE_EP
+@@ -6,15 +6,6 @@ menu "Cadence-based PCIe controllers"
+ config PCIE_CADENCE
+ 	tristate
+ 
+-config PCIE_CADENCE_DEBUGFS
+-	bool "Cadence PCIe debugfs entries"
+-	depends on DEBUG_FS
+-	depends on PCIE_CADENCE_HOST || PCIE_CADENCE_EP
+-	help
+-	  Say Y here to enable debugfs entries for the PCIe controller. These
+-	  entries provide various debug features related to the controller and
+-	  the LTSSM status of link can be displayed.
+-
+ config PCIE_CADENCE_HOST
+ 	tristate
+ 	depends on OF
+@@ -28,12 +19,12 @@ config PCIE_CADENCE_EP
  	select PCIE_CADENCE
  
  config PCIE_CADENCE_PLAT
@@ -41,7 +61,7 @@ index fd704dec4..b26263dde 100644
  	depends on OF
  	select PCIE_CADENCE_PLAT
  	help
-@@ -33,7 +33,7 @@ config PCIE_CADENCE_PLAT_HOST
+@@ -42,7 +33,7 @@ config PCIE_CADENCE_PLAT_HOST
  	  vendors SoCs.
  
  config PCIE_CADENCE_PLAT_EP
@@ -50,7 +70,7 @@ index fd704dec4..b26263dde 100644
  	depends on OF
  	depends on PCI_ENDPOINT
  	select PCIE_CADENCE_PLAT
-@@ -42,21 +42,6 @@ config PCIE_CADENCE_PLAT_EP
+@@ -51,21 +42,6 @@ config PCIE_CADENCE_PLAT_EP
  	  endpoint mode. This PCIe controller may be embedded into many
  	  different vendors SoCs.
  
@@ -72,7 +92,7 @@ index fd704dec4..b26263dde 100644
  config PCIE_SG2042_HOST
  	tristate "Sophgo SG2042 PCIe controller (host mode)"
  	depends on OF && (ARCH_SOPHGO || COMPILE_TEST)
-@@ -92,4 +77,15 @@ config PCI_J721E_EP
+@@ -101,4 +77,15 @@ config PCI_J721E_EP
  	  controller in endpoint mode. TI J721E PCIe controller uses Cadence PCIe
  	  core.
  
@@ -89,12 +109,13 @@ index fd704dec4..b26263dde 100644
 +
  endmenu
 diff --git a/drivers/pci/controller/cadence/Makefile b/drivers/pci/controller/cadence/Makefile
-index b8ec1cecf..6f9c8459f 100644
+index 80be0b885ac84b8407c982e2eb244b7d81acf672..6f9c8459f299f966daa7a7f6ef465a9cf4bc0203 100644
 --- a/drivers/pci/controller/cadence/Makefile
 +++ b/drivers/pci/controller/cadence/Makefile
-@@ -1,12 +1,10 @@
+@@ -1,13 +1,10 @@
  # SPDX-License-Identifier: GPL-2.0
 -pcie-cadence-mod-y := pcie-cadence-hpa.o pcie-cadence.o
+-pcie-cadence-mod-$(CONFIG_PCIE_CADENCE_DEBUGFS) += pcie-cadence-debugfs.o
 -pcie-cadence-host-mod-y := pcie-cadence-host-common.o pcie-cadence-host.o pcie-cadence-host-hpa.o
 -pcie-cadence-ep-mod-y := pcie-cadence-ep.o
 -
@@ -113,7 +134,7 @@ index b8ec1cecf..6f9c8459f 100644
 +obj-$(CONFIG_PCI_SKY1) += pci-sky1-acpi.o
 diff --git a/drivers/pci/controller/cadence/pci-sky1-acpi.c b/drivers/pci/controller/cadence/pci-sky1-acpi.c
 new file mode 100644
-index 000000000..1032a73cc
+index 0000000000000000000000000000000000000000..1032a73cc7ad64b54490430ffaab8215e3dcaf25
 --- /dev/null
 +++ b/drivers/pci/controller/cadence/pci-sky1-acpi.c
 @@ -0,0 +1,197 @@
@@ -316,7 +337,7 @@ index 000000000..1032a73cc
 +#endif /* CONFIG_ACPI */
 diff --git a/drivers/pci/controller/cadence/pci-sky1-acpi.h b/drivers/pci/controller/cadence/pci-sky1-acpi.h
 new file mode 100644
-index 000000000..43b20a339
+index 0000000000000000000000000000000000000000..43b20a339027ec5f4ccfcd36fc3cd7c3422f1eb1
 --- /dev/null
 +++ b/drivers/pci/controller/cadence/pci-sky1-acpi.h
 @@ -0,0 +1,18 @@
@@ -340,7 +361,7 @@ index 000000000..43b20a339
 +#endif /* _PCIE_SKY1_ACPI_H */
 diff --git a/drivers/pci/controller/cadence/pci-sky1-debugfs.c b/drivers/pci/controller/cadence/pci-sky1-debugfs.c
 new file mode 100644
-index 000000000..38d62dad6
+index 0000000000000000000000000000000000000000..38d62dad637a26219c7b16d81e5a2ca44426935d
 --- /dev/null
 +++ b/drivers/pci/controller/cadence/pci-sky1-debugfs.c
 @@ -0,0 +1,1340 @@
@@ -1686,7 +1707,7 @@ index 000000000..38d62dad6
 +#endif
 diff --git a/drivers/pci/controller/cadence/pci-sky1-debugfs.h b/drivers/pci/controller/cadence/pci-sky1-debugfs.h
 new file mode 100644
-index 000000000..f8b530561
+index 0000000000000000000000000000000000000000..f8b53056102f1080e4b91cb7698b8f7ece43c35c
 --- /dev/null
 +++ b/drivers/pci/controller/cadence/pci-sky1-debugfs.h
 @@ -0,0 +1,17 @@
@@ -1708,7 +1729,7 @@ index 000000000..f8b530561
 +
 +#endif // _PCI_SKY1_DEBUGFS_H
 diff --git a/drivers/pci/controller/cadence/pci-sky1.c b/drivers/pci/controller/cadence/pci-sky1.c
-index cd55c64e5..ca2b86d91 100644
+index b8632f1d3156ae522397b3082316b26d67209a68..ca2b86d916192d25f0c41451ac41e1e995870397 100644
 --- a/drivers/pci/controller/cadence/pci-sky1.c
 +++ b/drivers/pci/controller/cadence/pci-sky1.c
 @@ -1,106 +1,2274 @@
@@ -4061,7 +4082,7 @@ index cd55c64e5..ca2b86d91 100644
  
  	return 0;
  }
-@@ -108,133 +2276,678 @@ static int sky1_pcie_start_link(struct cdns_pcie *cdns_pcie)
+@@ -108,138 +2276,678 @@ static int sky1_pcie_start_link(struct cdns_pcie *cdns_pcie)
  static void sky1_pcie_stop_link(struct cdns_pcie *cdns_pcie)
  {
  	struct sky1_pcie *pcie = dev_get_drvdata(cdns_pcie->dev);
@@ -4521,6 +4542,7 @@ index cd55c64e5..ca2b86d91 100644
  	cdns_pcie->reg_base = pcie->reg_base;
  	cdns_pcie->msg_res = pcie->msg_res;
 -	cdns_pcie->is_rc = true;
+-	cdns_pcie->is_hpa = true;
 -
 -	reg_off = devm_kzalloc(dev, sizeof(*reg_off), GFP_KERNEL);
 -	if (!reg_off) {
@@ -4666,10 +4688,12 @@ index cd55c64e5..ca2b86d91 100644
 +static int sky1_pcie_suspend_noirq(struct device *dev)
  {
 -	struct sky1_pcie *pcie = platform_get_drvdata(pdev);
+-	struct cdns_pcie_rc *rc;
 +	struct sky1_pcie *pcie = dev_get_drvdata(dev);
 +	int ret = 0;
  
--	pci_ecam_free(pcie->cfg);
+-	rc = container_of(pcie->cdns_pcie, struct cdns_pcie_rc, pcie);
+-	cdns_pcie_hpa_host_disable(rc);
 +	if (!pcie->is_probe)
 +		return 0;
 +	sky1_pcie_pme_turn_off(pcie);
@@ -4692,7 +4716,8 @@ index cd55c64e5..ca2b86d91 100644
 +	dev_info(dev, "%s\n", __func__);
 +	return ret;
 +}
-+
+ 
+-	pci_ecam_free(pcie->cfg);
 +/*
 + * Mainline doesn't export cdns_pcie_host_restore().
 + * We use cdns_pcie_host_link_setup() + cdns_pcie_host_init() instead.
@@ -4795,7 +4820,7 @@ index cd55c64e5..ca2b86d91 100644
 -MODULE_AUTHOR("Hans Zhang <hans.zhang@cixtech.com>");
 diff --git a/drivers/pci/controller/cadence/pci-sky1.h b/drivers/pci/controller/cadence/pci-sky1.h
 new file mode 100644
-index 000000000..368d359db
+index 0000000000000000000000000000000000000000..368d359dba78c6edfbbe32c9feb69dae96e37504
 --- /dev/null
 +++ b/drivers/pci/controller/cadence/pci-sky1.h
 @@ -0,0 +1,197 @@
@@ -4996,8 +5021,29 @@ index 000000000..368d359db
 +bool sky1_pcie_link_up(struct cdns_pcie *cdns_pcie);
 +
 +#endif // _PCIE_SKY1_H
+diff --git a/drivers/pci/controller/cadence/pcie-cadence-ep.c b/drivers/pci/controller/cadence/pcie-cadence-ep.c
+index 370b19f4d38fbed4f5ceabaca3a26f3483071050..c0e1194a936b345cd06b5f5a733a3ad51c4d69a3 100644
+--- a/drivers/pci/controller/cadence/pcie-cadence-ep.c
++++ b/drivers/pci/controller/cadence/pcie-cadence-ep.c
+@@ -655,7 +655,6 @@ void cdns_pcie_ep_disable(struct cdns_pcie_ep *ep)
+ 	struct device *dev = ep->pcie.dev;
+ 	struct pci_epc *epc = to_pci_epc(dev);
+ 
+-	cdns_pcie_debugfs_deinit(&ep->pcie);
+ 	pci_epc_deinit_notify(epc);
+ 	pci_epc_mem_free_addr(epc, ep->irq_phys_addr, ep->irq_cpu_addr,
+ 			      SZ_128K);
+@@ -762,8 +761,6 @@ int cdns_pcie_ep_setup(struct cdns_pcie_ep *ep)
+ 
+ 	pci_epc_init_notify(epc);
+ 
+-	cdns_pcie_debugfs_init(pcie);
+-
+ 	return 0;
+ 
+  free_epc_mem:
 diff --git a/drivers/pci/controller/cadence/pcie-cadence-host.c b/drivers/pci/controller/cadence/pcie-cadence-host.c
-index c12cedf05..009138102 100644
+index 15aabaac3dcd7b3373fbfb0d802ff489945b854c..0091381022676b17ab7b571a03a8e2457c46ef1b 100644
 --- a/drivers/pci/controller/cadence/pcie-cadence-host.c
 +++ b/drivers/pci/controller/cadence/pcie-cadence-host.c
 @@ -12,9 +12,16 @@
@@ -5531,7 +5577,15 @@ index c12cedf05..009138102 100644
  	if (ret)
  		dev_dbg(dev, "PCIe link never came up\n");
  
-@@ -394,26 +777,43 @@ int cdns_pcie_host_setup(struct cdns_pcie_rc *rc)
+@@ -365,7 +748,6 @@ void cdns_pcie_host_disable(struct cdns_pcie_rc *rc)
+ {
+ 	struct pci_host_bridge *bridge;
+ 
+-	cdns_pcie_debugfs_deinit(&rc->pcie);
+ 	bridge = pci_host_bridge_from_priv(rc);
+ 	pci_lock_rescan_remove();
+ 	pci_stop_root_bus(bridge->bus);
+@@ -395,26 +777,43 @@ int cdns_pcie_host_setup(struct cdns_pcie_rc *rc)
  	pcie = &rc->pcie;
  	pcie->is_rc = true;
  
@@ -5588,8 +5642,23 @@ index c12cedf05..009138102 100644
  
  	ret = cdns_pcie_host_link_setup(rc);
  	if (ret)
+@@ -430,13 +829,7 @@ int cdns_pcie_host_setup(struct cdns_pcie_rc *rc)
+ 	if (!bridge->ops)
+ 		bridge->ops = &cdns_pcie_host_ops;
+ 
+-	ret = pci_host_probe(bridge);
+-	if (ret)
+-		return ret;
+-
+-	cdns_pcie_debugfs_init(pcie);
+-
+-	return 0;
++	return pci_host_probe(bridge);
+ }
+ EXPORT_SYMBOL_GPL(cdns_pcie_host_setup);
+ 
 diff --git a/drivers/pci/controller/cadence/pcie-cadence.c b/drivers/pci/controller/cadence/pcie-cadence.c
-index a1eada56e..6fd3c89f1 100644
+index 0ac98024994141fe8224e5f8fca794d81eb4fc88..1c4de94351ac46f4c1c048db7499b2201aa4af2b 100644
 --- a/drivers/pci/controller/cadence/pcie-cadence.c
 +++ b/drivers/pci/controller/cadence/pcie-cadence.c
 @@ -23,16 +23,16 @@ u16 cdns_pcie_find_ext_capability(struct cdns_pcie *pcie, u8 cap)
@@ -5743,7 +5812,7 @@ index a1eada56e..6fd3c89f1 100644
  }
  EXPORT_SYMBOL_GPL(cdns_pcie_reset_outbound_region);
  
-@@ -304,7 +301,6 @@ const struct dev_pm_ops cdns_pcie_pm_ops = {
+@@ -290,7 +287,6 @@ const struct dev_pm_ops cdns_pcie_pm_ops = {
  	NOIRQ_SYSTEM_SLEEP_PM_OPS(cdns_pcie_suspend_noirq,
  				  cdns_pcie_resume_noirq)
  };
@@ -5752,10 +5821,10 @@ index a1eada56e..6fd3c89f1 100644
  MODULE_LICENSE("GPL");
  MODULE_DESCRIPTION("Cadence PCIe controller driver");
 diff --git a/drivers/pci/controller/cadence/pcie-cadence.h b/drivers/pci/controller/cadence/pcie-cadence.h
-index 042a4c49b..551325b9b 100644
+index 4a96e1869e53596e246c252c2fe073d31d74ae8d..fe1ad902cbc51be8e41fd2fc0e2ace07a29707eb 100644
 --- a/drivers/pci/controller/cadence/pcie-cadence.h
 +++ b/drivers/pci/controller/cadence/pcie-cadence.h
-@@ -7,12 +7,232 @@
+@@ -7,15 +7,232 @@
  #define _PCIE_CADENCE_H
  
  #include <linux/kernel.h>
@@ -5765,7 +5834,9 @@ index 042a4c49b..551325b9b 100644
  #include <linux/phy/phy.h>
 -#include "pcie-cadence-lga-regs.h"
 -#include "pcie-cadence-hpa-regs.h"
-+
+ 
+-#define CDNS_PCIE_LGA_LTSSM_STATUS_MASK	GENMASK(29, 24)
+-#define CDNS_PCIE_HPA_LTSSM_STATUS_MASK	GENMASK(27, 20)
 +/* Parameters for the waiting for link up routine */
 +#define LINK_WAIT_MAX_RETRIES	10
 +#define LINK_WAIT_USLEEP_MIN	90000
@@ -5991,7 +6062,7 @@ index 042a4c49b..551325b9b 100644
  
  enum cdns_pcie_rp_bar {
  	RP_BAR_UNDEFINED = -1,
-@@ -21,63 +241,43 @@ enum cdns_pcie_rp_bar {
+@@ -24,261 +241,61 @@ enum cdns_pcie_rp_bar {
  	RP_NO_BAR
  };
  
@@ -6003,22 +6074,7 @@ index 042a4c49b..551325b9b 100644
  	bool free;
  };
  
-+/* Endpoint Function BAR Inbound PCIe to AXI Address Translation Register */
-+#define CDNS_PCIE_AT_IB_EP_FUNC_BAR_ADDR0(fn, bar) \
-+	(CDNS_PCIE_AXI_MASTER_OFFSET + 0x0 + (fn) * 0x0040 + (bar) * 0x0008)
-+#define CDNS_PCIE_AT_IB_EP_FUNC_BAR_ADDR1(fn, bar) \
-+	(CDNS_PCIE_AXI_MASTER_OFFSET + 0x4 + (fn) * 0x0040 + (bar) * 0x0008)
-+
-+/* Normal/Vendor specific message access: offset inside some outbound region */
-+#define CDNS_PCIE_NORMAL_MSG_ROUTING_MASK	GENMASK(7, 5)
-+#define CDNS_PCIE_NORMAL_MSG_ROUTING(route) \
-+	(((route) << 5) & CDNS_PCIE_NORMAL_MSG_ROUTING_MASK)
-+#define CDNS_PCIE_NORMAL_MSG_CODE_MASK		GENMASK(15, 8)
-+#define CDNS_PCIE_NORMAL_MSG_CODE(code) \
-+	(((code) << 8) & CDNS_PCIE_NORMAL_MSG_CODE_MASK)
-+#define CDNS_PCIE_MSG_DATA			BIT(16)
-+
- struct cdns_pcie;
+-struct cdns_pcie;
 -struct cdns_pcie_rc;
 -
 -enum cdns_pcie_reg_bank {
@@ -6033,6 +6089,195 @@ index 042a4c49b..551325b9b 100644
 -	REG_BANK_AXI_DTI,
 -	REG_BANKS_MAX,
 -};
+-
+-enum cdns_pcie_lga_ltssm {
+-	CDNS_PCIE_LGA_LTSSM_DETECT_QUIET			= 0x00,
+-	CDNS_PCIE_LGA_LTSSM_DETECT_ACTIVE			= 0x01,
+-	CDNS_PCIE_LGA_LTSSM_POLLING_ACTIVE			= 0x02,
+-	CDNS_PCIE_LGA_LTSSM_POLLING_COMPLIANCE			= 0x03,
+-	CDNS_PCIE_LGA_LTSSM_POLLING_CONFIGURATION		= 0x04,
+-	CDNS_PCIE_LGA_LTSSM_CONFIGURATION_LINKWIDTH_START	= 0x05,
+-	CDNS_PCIE_LGA_LTSSM_CONFIGURATION_LINKWIDTH_ACCEPT	= 0x06,
+-	CDNS_PCIE_LGA_LTSSM_CONFIGURATION_LANENUM_ACCEPT	= 0x07,
+-	CDNS_PCIE_LGA_LTSSM_CONFIGURATION_LANENUM_WAIT		= 0x08,
+-	CDNS_PCIE_LGA_LTSSM_CONFIGURATION_COMPLETE		= 0x09,
+-	CDNS_PCIE_LGA_LTSSM_CONFIGURATION_IDLE			= 0x0A,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_RCVRLOCK			= 0x0B,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_SPEED			= 0x0C,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_RCVRCFG			= 0x0D,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_IDLE			= 0x0E,
+-	CDNS_PCIE_LGA_LTSSM_L0					= 0x10,
+-	CDNS_PCIE_LGA_LTSSM_RX_L0S_ENTRY			= 0x11,
+-	CDNS_PCIE_LGA_LTSSM_RX_L0S_IDLE				= 0x12,
+-	CDNS_PCIE_LGA_LTSSM_RX_L0S_FTS				= 0x13,
+-	CDNS_PCIE_LGA_LTSSM_TX_L0S_ENTRY			= 0x14,
+-	CDNS_PCIE_LGA_LTSSM_TX_L0S_IDLE				= 0x15,
+-	CDNS_PCIE_LGA_LTSSM_TX_L0S_FTS				= 0x16,
+-	CDNS_PCIE_LGA_LTSSM_L1_ENTRY				= 0x17,
+-	CDNS_PCIE_LGA_LTSSM_L1_IDLE				= 0x18,
+-	CDNS_PCIE_LGA_LTSSM_L2_IDLE				= 0x19,
+-	CDNS_PCIE_LGA_LTSSM_L2_TRANSMITWAKE			= 0x1A,
+-	CDNS_PCIE_LGA_LTSSM_DISABLED				= 0x20,
+-	CDNS_PCIE_LGA_LTSSM_LOOPBACK_ENTRY_MASTER		= 0x21,
+-	CDNS_PCIE_LGA_LTSSM_LOOPBACK_ACTIVE_MASTER		= 0x22,
+-	CDNS_PCIE_LGA_LTSSM_LOOPBACK_EXIT_MASTER		= 0x23,
+-	CDNS_PCIE_LGA_LTSSM_LOOPBACK_ENTRY_SLAVE		= 0x24,
+-	CDNS_PCIE_LGA_LTSSM_LOOPBACK_ACTIVE_SLAVE		= 0x25,
+-	CDNS_PCIE_LGA_LTSSM_LOOPBACK_EXIT_SLAVE			= 0x26,
+-	CDNS_PCIE_LGA_LTSSM_HOT_RESET				= 0x27,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_EQUALIZATION_PHASE_0	= 0x28,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_EQUALIZATION_PHASE_1	= 0x29,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_EQUALIZATION_PHASE_2	= 0x2A,
+-	CDNS_PCIE_LGA_LTSSM_RECOVERY_EQUALIZATION_PHASE_3	= 0x2B,
+-	CDNS_PCIE_LGA_LTSSM_UNKNOWN				= 0xFFFFFFFF,
+-};
++/* Endpoint Function BAR Inbound PCIe to AXI Address Translation Register */
++#define CDNS_PCIE_AT_IB_EP_FUNC_BAR_ADDR0(fn, bar) \
++	(CDNS_PCIE_AXI_MASTER_OFFSET + 0x0 + (fn) * 0x0040 + (bar) * 0x0008)
++#define CDNS_PCIE_AT_IB_EP_FUNC_BAR_ADDR1(fn, bar) \
++	(CDNS_PCIE_AXI_MASTER_OFFSET + 0x4 + (fn) * 0x0040 + (bar) * 0x0008)
++
++/* Normal/Vendor specific message access: offset inside some outbound region */
++#define CDNS_PCIE_NORMAL_MSG_ROUTING_MASK	GENMASK(7, 5)
++#define CDNS_PCIE_NORMAL_MSG_ROUTING(route) \
++	(((route) << 5) & CDNS_PCIE_NORMAL_MSG_ROUTING_MASK)
++#define CDNS_PCIE_NORMAL_MSG_CODE_MASK		GENMASK(15, 8)
++#define CDNS_PCIE_NORMAL_MSG_CODE(code) \
++	(((code) << 8) & CDNS_PCIE_NORMAL_MSG_CODE_MASK)
++#define CDNS_PCIE_MSG_DATA			BIT(16)
+ 
+-enum cdns_pcie_hpa_ltssm {
+-	CDNS_PCIE_HPA_LTSSM_DETECT_QUIET		= 0,
+-	CDNS_PCIE_HPA_LTSSM_DETECT_QUIET_ENTRY		= 1,
+-	CDNS_PCIE_HPA_LTSSM_DETECT_ACTIVE		= 2,
+-	CDNS_PCIE_HPA_LTSSM_DETECT_ACTIVE_1		= 3,
+-	CDNS_PCIE_HPA_LTSSM_DETECT_ACTIVE_2		= 4,
+-	CDNS_PCIE_HPA_LTSSM_DETECT_ACTIVE_3		= 5,
+-	CDNS_PCIE_HPA_LTSSM_RCVR_DETECTED_ST		= 6,
+-	CDNS_PCIE_HPA_LTSSM_RCVR_DETECTED_1		= 7,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_ACTIVE		= 8,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_ACTIVE_1		= 9,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_ACTIVE_2		= 10,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_ACTIVE_3		= 11,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE		= 12,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_1	= 13,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_CONFIG		= 14,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_CONFIG_1		= 15,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_CONFIG_2		= 16,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_START_RC		= 17,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_START_RC_1	= 18,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_START_RC_2	= 19,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_ACC_RC		= 20,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_WAIT_RC	= 21,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_WAIT_RC_1	= 22,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_ACC_RC	= 23,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_START_EP		= 24,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_START_EP_1	= 25,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_START_EP_2	= 26,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LW_ACC_EP		= 27,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_WAIT_EP	= 28,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_WAIT_EP_1	= 29,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_ACC_EP	= 30,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_LANENUM_ACC_EP_1	= 31,
+-	CDNS_PCIE_HPA_LTSSM_DUMMY_STATE_1		= 32,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_COMPLETE		= 33,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_COMPLETE_1		= 34,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_COMPLETE_2		= 35,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_IDLE			= 36,
+-	CDNS_PCIE_HPA_LTSSM_CONFIG_IDLE_1		= 37,
+-	CDNS_PCIE_HPA_LTSSM_DUMMY_STATE_2		= 38,
+-	CDNS_PCIE_HPA_LTSSM_DUMMY_STATE_3		= 39,
+-	CDNS_PCIE_HPA_LTSSM_DUMMY_STATE_4		= 40,
+-	CDNS_PCIE_HPA_LTSSM_L0_STATE			= 41,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_RCVR_LOCK		= 42,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_RCVR_LOCK_1	= 43,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_RCVR_CFG		= 44,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_RCVR_CFG_1		= 45,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_IDLE		= 46,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_IDLE_1		= 47,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK		= 48,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_1		= 49,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_2		= 50,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_3		= 51,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_4		= 52,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_5		= 53,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_6		= 54,
+-	CDNS_PCIE_HPA_LTSSM_DISABLE_LINK_7		= 55,
+-	CDNS_PCIE_HPA_LTSSM_HOT_RESET			= 56,
+-	CDNS_PCIE_HPA_LTSSM_HOT_RESET_1			= 57,
+-	CDNS_PCIE_HPA_LTSSM_HOT_RESET_2			= 58,
+-	CDNS_PCIE_HPA_LTSSM_HOT_RESET_3			= 59,
+-	CDNS_PCIE_HPA_LTSSM_L0S_ENTRY			= 60,
+-	CDNS_PCIE_HPA_LTSSM_L0S_1			= 61,
+-	CDNS_PCIE_HPA_LTSSM_L0S_2			= 62,
+-	CDNS_PCIE_HPA_LTSSM_L0S_3			= 63,
+-	CDNS_PCIE_HPA_LTSSM_L0S_4			= 64,
+-	CDNS_PCIE_HPA_LTSSM_L0S_5			= 65,
+-	CDNS_PCIE_HPA_LTSSM_WAIT_FOR_LINK_TX		= 66,
+-	CDNS_PCIE_HPA_LTSSM_TX_FTS_ENTRY		= 67,
+-	CDNS_PCIE_HPA_LTSSM_TX_FTS_1			= 68,
+-	CDNS_PCIE_HPA_LTSSM_TX_FTS_2			= 69,
+-	CDNS_PCIE_HPA_LTSSM_TX_ELEC_IDLE_ST		= 70,
+-	CDNS_PCIE_HPA_LTSSM_TX_ELEC_IDLE_1		= 71,
+-	CDNS_PCIE_HPA_LTSSM_TX_ELEC_IDLE_2		= 72,
+-	CDNS_PCIE_HPA_LTSSM_TX_ELEC_IDLE_3		= 73,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_SPEED		= 74,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_SPEED_1		= 75,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_SPEED_2		= 76,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_SPEED_3		= 77,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23	= 78,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_1	= 79,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_2	= 80,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_3	= 81,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_4	= 82,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_5	= 83,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_6	= 84,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_7	= 85,
+-	CDNS_PCIE_HPA_LTSSM_POLLING_COMPLIANCE_GEN23_8	= 86,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_ENTRY	= 87,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_ENTRY_FROM_RECOVERY = 88,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_EXIT_1	= 89,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_EXIT		= 90,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_GEN2_1	= 91,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_GEN2_2	= 92,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_GEN2_3	= 93,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_GEN2_4	= 94,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_GEN2_5	= 95,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_SLAVE_ACTIVE	= 96,
+-	CDNS_PCIE_HPA_LTSSM_L1_ENTRY			= 97,
+-	CDNS_PCIE_HPA_LTSSM_L1_1			= 98,
+-	CDNS_PCIE_HPA_LTSSM_L1_2			= 99,
+-	CDNS_PCIE_HPA_LTSSM_L1_3			= 100,
+-	CDNS_PCIE_HPA_LTSSM_L1_4			= 101,
+-	CDNS_PCIE_HPA_LTSSM_L1_IDLE			= 102,
+-	CDNS_PCIE_HPA_LTSSM_L1_EXIT			= 103,
+-	CDNS_PCIE_HPA_LTSSM_L2_ENTRY			= 104,
+-	CDNS_PCIE_HPA_LTSSM_L2_1			= 105,
+-	CDNS_PCIE_HPA_LTSSM_L2_2			= 106,
+-	CDNS_PCIE_HPA_LTSSM_L2_3			= 107,
+-	CDNS_PCIE_HPA_LTSSM_L2_4			= 108,
+-	CDNS_PCIE_HPA_LTSSM_L2_5			= 109,
+-	CDNS_PCIE_HPA_LTSSM_L2_IDLE			= 110,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY	= 111,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY_1	= 112,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY_2	= 113,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY_3	= 114,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY_4	= 115,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY_5	= 116,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ENTRY_FROM_RECOVERY = 117,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_ACTIVE	= 118,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_EXIT	= 119,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_EXIT_1	= 120,
+-	CDNS_PCIE_HPA_LTSSM_LOOPBACK_MASTER_EXIT_2	= 121,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_EQUALIZATION_PHASE0 = 122,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_EQUALIZATION_PHASE1 = 123,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_EQUALIZATION_PHASE2_1 = 124,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_EQUALIZATION_PHASE2_2 = 125,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_EQUALIZATION_PHASE3_1 = 126,
+-	CDNS_PCIE_HPA_LTSSM_RECOVERY_EQUALIZATION_PHASE3_2 = 127,
+-	CDNS_PCIE_HPA_LTSSM_UNKNOWN			= 0xFFFFFFFF,
+-};
++struct cdns_pcie;
  
  struct cdns_pcie_ops {
 -	int     (*start_link)(struct cdns_pcie *pcie);
@@ -6076,13 +6321,14 @@ index 042a4c49b..551325b9b 100644
 + * @msg_res: start/end offsets for PCIe msg region (optional, for ATU region 1)
   * @dev: PCIe controller
   * @is_rc: tell whether the PCIe controller mode is Root Complex or Endpoint.
+- * @is_hpa: indicates if the architecture is HPA
   * @phy_count: number of supported PHY devices
-@@ -85,21 +285,19 @@ struct cdns_plat_pcie_of_data {
-  * @link: list of pointers to corresponding device link representations
+  * @phy: list of pointers to specific PHY control blocks
   * @ops: Platform-specific ops to control various inputs from Cadence PCIe
   *       wrapper
 - * @cdns_pcie_reg_offsets: Register bank offsets for different SoC
   * @max_link_speed: Maximum supported link speed
+- * @debug_dir: debugfs node
   */
  struct cdns_pcie {
 -	void __iomem		             *reg_base;
@@ -6090,12 +6336,13 @@ index 042a4c49b..551325b9b 100644
 -	struct resource                      *msg_res;
 -	struct device		             *dev;
 -	bool			             is_rc;
+-	bool				     is_hpa;
 -	int			             phy_count;
 -	struct phy		             **phy;
--	struct device_link	             **link;
 -	const  struct cdns_pcie_ops          *ops;
 -	const  struct cdns_plat_pcie_of_data *cdns_pcie_reg_offsets;
 -	int				     max_link_speed;
+-	struct dentry			     *debug_dir;
 +	void __iomem		*reg_base;
 +	struct resource		*mem_res;
 +	struct resource		*msg_res;
@@ -6103,13 +6350,12 @@ index 042a4c49b..551325b9b 100644
 +	bool			is_rc;
 +	int			phy_count;
 +	struct phy		**phy;
-+	struct device_link	**link;
 +	const struct cdns_pcie_ops *ops;
 +	int			max_link_speed;
  };
  
  /**
-@@ -115,8 +313,6 @@ struct cdns_pcie {
+@@ -294,8 +311,6 @@ struct cdns_pcie {
   *                available
   * @quirk_retrain_flag: Retrain link as quirk for PCIe Gen2
   * @quirk_detect_quiet_flag: LTSSM Detect Quiet min delay set as quirk
@@ -6118,7 +6364,7 @@ index 042a4c49b..551325b9b 100644
   * @quirk_broken_aspm_l0s: Disable ASPM L0s support as quirk
   * @quirk_broken_aspm_l1: Disable ASPM L1 support as quirk
   */
-@@ -129,8 +325,7 @@ struct cdns_pcie_rc {
+@@ -308,8 +323,7 @@ struct cdns_pcie_rc {
  	bool			avail_ib_bar[CDNS_PCIE_RP_MAX_IB];
  	unsigned int		quirk_retrain_flag:1;
  	unsigned int		quirk_detect_quiet_flag:1;
@@ -6128,7 +6374,7 @@ index 042a4c49b..551325b9b 100644
  	unsigned int            quirk_broken_aspm_l0s:1;
  	unsigned int            quirk_broken_aspm_l1:1;
  };
-@@ -185,43 +380,6 @@ struct cdns_pcie_ep {
+@@ -364,43 +378,6 @@ struct cdns_pcie_ep {
  	unsigned int		quirk_disable_flr:1;
  };
  
@@ -6172,7 +6418,7 @@ index 042a4c49b..551325b9b 100644
  
  /* Register access */
  static inline void cdns_pcie_writel(struct cdns_pcie *pcie, u32 reg, u32 value)
-@@ -234,27 +392,6 @@ static inline u32 cdns_pcie_readl(struct cdns_pcie *pcie, u32 reg)
+@@ -413,27 +390,6 @@ static inline u32 cdns_pcie_readl(struct cdns_pcie *pcie, u32 reg)
  	return readl(pcie->reg_base + reg);
  }
  
@@ -6200,7 +6446,7 @@ index 042a4c49b..551325b9b 100644
  static inline u32 cdns_pcie_read_sz(void __iomem *addr, int size)
  {
  	void __iomem *aligned_addr = PTR_ALIGN_DOWN(addr, 0x4);
-@@ -359,29 +496,6 @@ static inline u32 cdns_pcie_rp_readl(struct cdns_pcie *pcie, u32 reg)
+@@ -538,29 +494,6 @@ static inline u32 cdns_pcie_rp_readl(struct cdns_pcie *pcie, u32 reg)
  	return cdns_pcie_read_sz(addr, 0x4);
  }
  
@@ -6230,15 +6476,16 @@ index 042a4c49b..551325b9b 100644
  /* Endpoint Function register access */
  static inline void cdns_pcie_ep_fn_writeb(struct cdns_pcie *pcie, u8 fn,
  					  u32 reg, u8 value)
-@@ -446,7 +560,6 @@ int cdns_pcie_host_setup(struct cdns_pcie_rc *rc);
+@@ -625,8 +558,6 @@ int cdns_pcie_host_setup(struct cdns_pcie_rc *rc);
  void cdns_pcie_host_disable(struct cdns_pcie_rc *rc);
  void __iomem *cdns_pci_map_bus(struct pci_bus *bus, unsigned int devfn,
  			       int where);
 -int cdns_pcie_hpa_host_setup(struct cdns_pcie_rc *rc);
+-void cdns_pcie_hpa_host_disable(struct cdns_pcie_rc *rc);
  #else
  static inline int cdns_pcie_host_link_setup(struct cdns_pcie_rc *rc)
  {
-@@ -463,11 +576,6 @@ static inline int cdns_pcie_host_setup(struct cdns_pcie_rc *rc)
+@@ -643,19 +574,10 @@ static inline int cdns_pcie_host_setup(struct cdns_pcie_rc *rc)
  	return 0;
  }
  
@@ -6250,7 +6497,15 @@ index 042a4c49b..551325b9b 100644
  static inline void cdns_pcie_host_disable(struct cdns_pcie_rc *rc)
  {
  }
-@@ -482,7 +590,6 @@ static inline void __iomem *cdns_pci_map_bus(struct pci_bus *bus, unsigned int d
+ 
+-static inline void cdns_pcie_hpa_host_disable(struct cdns_pcie_rc *rc)
+-{
+-}
+-
+ static inline void __iomem *cdns_pci_map_bus(struct pci_bus *bus, unsigned int devfn,
+ 					     int where)
+ {
+@@ -666,7 +588,6 @@ static inline void __iomem *cdns_pci_map_bus(struct pci_bus *bus, unsigned int d
  #if IS_ENABLED(CONFIG_PCIE_CADENCE_EP)
  int cdns_pcie_ep_setup(struct cdns_pcie_ep *ep);
  void cdns_pcie_ep_disable(struct cdns_pcie_ep *ep);
@@ -6258,7 +6513,7 @@ index 042a4c49b..551325b9b 100644
  #else
  static inline int cdns_pcie_ep_setup(struct cdns_pcie_ep *ep)
  {
-@@ -492,17 +599,10 @@ static inline int cdns_pcie_ep_setup(struct cdns_pcie_ep *ep)
+@@ -676,17 +597,10 @@ static inline int cdns_pcie_ep_setup(struct cdns_pcie_ep *ep)
  static inline void cdns_pcie_ep_disable(struct cdns_pcie_ep *ep)
  {
  }
@@ -6278,7 +6533,7 @@ index 042a4c49b..551325b9b 100644
  
  void cdns_pcie_detect_quiet_min_delay_set(struct cdns_pcie *pcie);
  
-@@ -516,23 +616,8 @@ void cdns_pcie_set_outbound_region_for_normal_msg(struct cdns_pcie *pcie,
+@@ -700,35 +614,8 @@ void cdns_pcie_set_outbound_region_for_normal_msg(struct cdns_pcie *pcie,
  
  void cdns_pcie_reset_outbound_region(struct cdns_pcie *pcie, u32 r);
  void cdns_pcie_disable_phy(struct cdns_pcie *pcie);
@@ -6303,9 +6558,21 @@ index 042a4c49b..551325b9b 100644
 +int cdns_pcie_init_phy(struct device *dev, struct cdns_pcie *pcie);
  extern const struct dev_pm_ops cdns_pcie_pm_ops;
  
+-#if IS_ENABLED(CONFIG_PCIE_CADENCE_DEBUGFS)
+-void cdns_pcie_debugfs_deinit(struct cdns_pcie *pci);
+-void cdns_pcie_debugfs_init(struct cdns_pcie *pci);
+-#else
+-static inline void cdns_pcie_debugfs_deinit(struct cdns_pcie *pci)
+-{
+-}
+-static inline void cdns_pcie_debugfs_init(struct cdns_pcie *pci)
+-{
+-}
+-#endif
+-
  #endif /* _PCIE_CADENCE_H */
 diff --git a/drivers/pci/pci-acpi.c b/drivers/pci/pci-acpi.c
-index 4d0f2cb6c..5b4674c59 100644
+index 42d545edd7fad9debba073b6a019eca886a43e82..09d3a2fff54c77e8647b609eed72f4972cc5aa40 100644
 --- a/drivers/pci/pci-acpi.c
 +++ b/drivers/pci/pci-acpi.c
 @@ -9,9 +9,11 @@
@@ -6329,10 +6596,10 @@ index 4d0f2cb6c..5b4674c59 100644
  }
  
 diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
-index 0500d5fd4..dbe9204e5 100644
+index d4fcc336bc2a951a349724e054f3525774ec7844..7e1aa28ca7ebb73367110592edc7a285360480f0 100644
 --- a/drivers/pci/quirks.c
 +++ b/drivers/pci/quirks.c
-@@ -2525,6 +2525,10 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_ASMEDIA, 0x1080, quirk_disable_aspm_l0s_l
+@@ -2549,6 +2549,10 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_ASMEDIA, 0x1080, quirk_disable_aspm_l0s_l
  DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_FREESCALE, 0x0451, quirk_disable_aspm_l0s_l1);
  DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_PASEMI, 0xa002, quirk_disable_aspm_l0s_l1);
  DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_HUAWEI, 0x1105, quirk_disable_aspm_l0s_l1);
@@ -6343,7 +6610,7 @@ index 0500d5fd4..dbe9204e5 100644
  
  /*
   * Some Pericom PCIe-to-PCI bridges in reverse mode need the PCIe Retrain
-@@ -2905,6 +2909,27 @@ DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_NVIDIA, 0x229e,
+@@ -2940,6 +2944,27 @@ DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_NVIDIA, 0x229e,
  			      PCI_CLASS_BRIDGE_PCI, 8,
  			      pci_quirk_nvidia_tegra_disable_rp_msi);
  
@@ -6371,7 +6638,7 @@ index 0500d5fd4..dbe9204e5 100644
  /*
   * Some versions of the MCP55 bridge from Nvidia have a legacy IRQ routing
   * config register.  This register controls the routing of legacy
-@@ -6422,3 +6447,41 @@ static void pci_mask_replay_timer_timeout(struct pci_dev *pdev)
+@@ -6470,3 +6495,41 @@ static void pci_mask_replay_timer_timeout(struct pci_dev *pdev)
  DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_GLI, 0x9750, pci_mask_replay_timer_timeout);
  DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_GLI, 0x9755, pci_mask_replay_timer_timeout);
  #endif
@@ -6414,7 +6681,7 @@ index 0500d5fd4..dbe9204e5 100644
 +DECLARE_PCI_FIXUP_FINAL(PCI_ANY_ID, PCI_ANY_ID,
 +			quirk_cadence_endpoint_no_d3);
 diff --git a/drivers/pci/setup-res.c b/drivers/pci/setup-res.c
-index 376f09630..bc05a76b0 100644
+index 376f09630a4ab25bcce670f5daa6c4817cc556a0..bc05a76b0a28590df7bfd5738f1f2a58eed2b200 100644
 --- a/drivers/pci/setup-res.c
 +++ b/drivers/pci/setup-res.c
 @@ -375,6 +375,40 @@ static int _pci_assign_resource(struct pci_dev *dev, int resno,

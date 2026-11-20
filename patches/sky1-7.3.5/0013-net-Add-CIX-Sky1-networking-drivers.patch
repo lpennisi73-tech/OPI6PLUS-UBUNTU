@@ -6,90 +6,13 @@ Subject: [PATCH] net: Add CIX Sky1 networking drivers
 Add Realtek r8125/r8126 5GbE drivers with RSS, WoL, MSI-X,
 IRQ affinity, and shutdown crash fix. Add macb errata and
 rtw89 firmware/power save fixes.
+
+[ported to Linux 7.3.1 by BOOKWORM: conflicts with upstream resolved]
 ---
- drivers/net/ethernet/cadence/macb_main.c      |    11 +
- drivers/net/ethernet/realtek/Kconfig          |     3 +
- drivers/net/ethernet/realtek/Makefile         |     2 +
- drivers/net/ethernet/realtek/r8125/Kconfig    |    10 +
- drivers/net/ethernet/realtek/r8125/Makefile   |    14 +
- drivers/net/ethernet/realtek/r8125/r8125.h    |  3052 +++
- .../net/ethernet/realtek/r8125/r8125_dash.c   |   573 +
- .../net/ethernet/realtek/r8125/r8125_dash.h   |   196 +
- .../net/ethernet/realtek/r8125/r8125_fiber.c  |   464 +
- .../net/ethernet/realtek/r8125/r8125_fiber.h  |    63 +
- .../ethernet/realtek/r8125/r8125_firmware.c   |   264 +
- .../ethernet/realtek/r8125/r8125_firmware.h   |    68 +
- drivers/net/ethernet/realtek/r8125/r8125_n.c  | 21349 ++++++++++++++++
- .../net/ethernet/realtek/r8125/r8125_ptp.c    |  1472 ++
- .../net/ethernet/realtek/r8125/r8125_ptp.h    |   159 +
- .../ethernet/realtek/r8125/r8125_realwow.h    |   118 +
- .../net/ethernet/realtek/r8125/r8125_rss.c    |   583 +
- .../net/ethernet/realtek/r8125/r8125_rss.h    |    76 +
- .../net/ethernet/realtek/r8125/rtl_eeprom.c   |   284 +
- .../net/ethernet/realtek/r8125/rtl_eeprom.h   |    53 +
- drivers/net/ethernet/realtek/r8125/rtltool.c  |   312 +
- drivers/net/ethernet/realtek/r8125/rtltool.h  |    89 +
- drivers/net/ethernet/realtek/r8126/Kconfig    |    10 +
- drivers/net/ethernet/realtek/r8126/Makefile   |    14 +
- drivers/net/ethernet/realtek/r8126/r8126.h    |  2976 +++
- .../net/ethernet/realtek/r8126/r8126_dash.h   |   261 +
- .../net/ethernet/realtek/r8126/r8126_fiber.c  |   466 +
- .../net/ethernet/realtek/r8126/r8126_fiber.h  |    63 +
- .../ethernet/realtek/r8126/r8126_firmware.c   |   264 +
- .../ethernet/realtek/r8126/r8126_firmware.h   |    68 +
- drivers/net/ethernet/realtek/r8126/r8126_n.c  | 17294 +++++++++++++
- .../net/ethernet/realtek/r8126/r8126_ptp.c    |   954 +
- .../net/ethernet/realtek/r8126/r8126_ptp.h    |   207 +
- .../ethernet/realtek/r8126/r8126_realwow.h    |   118 +
- .../net/ethernet/realtek/r8126/r8126_rss.c    |   583 +
- .../net/ethernet/realtek/r8126/r8126_rss.h    |    76 +
- .../net/ethernet/realtek/r8126/rtl_eeprom.c   |   285 +
- .../net/ethernet/realtek/r8126/rtl_eeprom.h   |    58 +
- drivers/net/ethernet/realtek/r8126/rtltool.c  |   293 +
- drivers/net/ethernet/realtek/r8126/rtltool.h  |    89 +
- drivers/net/wireless/realtek/rtw89/fw.c       |    29 +
- drivers/net/wireless/realtek/rtw89/ps.c       |    32 +-
  42 files changed, 53341 insertions(+), 14 deletions(-)
- create mode 100644 drivers/net/ethernet/realtek/r8125/Kconfig
- create mode 100644 drivers/net/ethernet/realtek/r8125/Makefile
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_dash.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_dash.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_fiber.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_fiber.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_firmware.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_firmware.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_n.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_ptp.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_ptp.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_realwow.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_rss.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/r8125_rss.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/rtl_eeprom.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/rtl_eeprom.h
- create mode 100755 drivers/net/ethernet/realtek/r8125/rtltool.c
- create mode 100755 drivers/net/ethernet/realtek/r8125/rtltool.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/Kconfig
- create mode 100644 drivers/net/ethernet/realtek/r8126/Makefile
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_dash.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_fiber.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_fiber.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_firmware.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_firmware.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_n.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_ptp.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_ptp.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_realwow.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_rss.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/r8126_rss.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/rtl_eeprom.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/rtl_eeprom.h
- create mode 100644 drivers/net/ethernet/realtek/r8126/rtltool.c
- create mode 100644 drivers/net/ethernet/realtek/r8126/rtltool.h
 
 diff --git a/drivers/net/ethernet/cadence/macb_main.c b/drivers/net/ethernet/cadence/macb_main.c
-index 5bc35f651ebd2..68128b06244b4 100644
+index 261a7e87520a47820158151d78c5b7b5f49335af..3d7bc161f40c4d5fbc610c92246d12ce95d017db 100644
 --- a/drivers/net/ethernet/cadence/macb_main.c
 +++ b/drivers/net/ethernet/cadence/macb_main.c
 @@ -6,6 +6,7 @@
@@ -100,7 +23,7 @@ index 5bc35f651ebd2..68128b06244b4 100644
  #include <linux/circ_buf.h>
  #include <linux/clk-provider.h>
  #include <linux/clk.h>
-@@ -5400,6 +5401,7 @@ static const struct of_device_id macb_dt_ids[] = {
+@@ -5765,6 +5766,7 @@ static const struct of_device_id macb_dt_ids[] = {
  	{ .compatible = "cdns,np4-macb", .data = &np4_config },
  	{ .compatible = "cdns,pc302-gem", .data = &pc302gem_config },
  	{ .compatible = "cdns,gem", .data = &pc302gem_config },
@@ -108,9 +31,9 @@ index 5bc35f651ebd2..68128b06244b4 100644
  	{ .compatible = "cdns,sam9x60-macb", .data = &at91sam9260_config },
  	{ .compatible = "atmel,sama5d2-gem", .data = &sama5d2_config },
  	{ .compatible = "atmel,sama5d29-gem", .data = &sama5d29_config },
-@@ -5424,6 +5426,14 @@ static const struct of_device_id macb_dt_ids[] = {
+@@ -5789,6 +5791,14 @@ static const struct of_device_id macb_dt_ids[] = {
+ };
  MODULE_DEVICE_TABLE(of, macb_dt_ids);
- #endif /* CONFIG_OF */
  
 +#ifdef CONFIG_ACPI
 +static const struct acpi_device_id macb_acpi_match[] = {
@@ -123,16 +46,16 @@ index 5bc35f651ebd2..68128b06244b4 100644
  static const struct macb_config default_gem_config = {
  	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE |
  		MACB_CAPS_JUMBO |
-@@ -5939,6 +5949,7 @@ static struct platform_driver macb_driver = {
+@@ -6307,6 +6317,7 @@ static struct platform_driver macb_driver = {
  	.driver		= {
  		.name		= "macb",
- 		.of_match_table	= of_match_ptr(macb_dt_ids),
+ 		.of_match_table	= macb_dt_ids,
 +		.acpi_match_table = ACPI_PTR(macb_acpi_match),
  		.pm	= &macb_pm_ops,
  	},
  	.shutdown	= macb_shutdown,
 diff --git a/drivers/net/ethernet/realtek/Kconfig b/drivers/net/ethernet/realtek/Kconfig
-index 9b0f4f9631dba..528d5d187d0a1 100644
+index 9b0f4f9631dbaa86ba6b08d558fbd94480fbe411..528d5d187d0a11c3f5cb929a4cfdd36a3dcb3931 100644
 --- a/drivers/net/ethernet/realtek/Kconfig
 +++ b/drivers/net/ethernet/realtek/Kconfig
 @@ -126,4 +126,7 @@ config RTASE
@@ -144,7 +67,7 @@ index 9b0f4f9631dba..528d5d187d0a1 100644
 +
  endif # NET_VENDOR_REALTEK
 diff --git a/drivers/net/ethernet/realtek/Makefile b/drivers/net/ethernet/realtek/Makefile
-index 12a9c399f40c6..1c5db9ddbaf57 100644
+index 12a9c399f40c6299a8dbf223af2e8b2c1bc1087f..1c5db9ddbaf57d37920c6dbb459840b7c1c74933 100644
 --- a/drivers/net/ethernet/realtek/Makefile
 +++ b/drivers/net/ethernet/realtek/Makefile
 @@ -8,4 +8,6 @@ obj-$(CONFIG_8139TOO) += 8139too.o
@@ -156,7 +79,7 @@ index 12a9c399f40c6..1c5db9ddbaf57 100644
  obj-$(CONFIG_RTASE) += rtase/
 diff --git a/drivers/net/ethernet/realtek/r8125/Kconfig b/drivers/net/ethernet/realtek/r8125/Kconfig
 new file mode 100644
-index 0000000000000..b050701145474
+index 0000000000000000000000000000000000000000..b0507011454748286ac577d4329e557c9d4ba2d5
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/Kconfig
 @@ -0,0 +1,10 @@
@@ -172,7 +95,7 @@ index 0000000000000..b050701145474
 +	  will be called r8125.
 diff --git a/drivers/net/ethernet/realtek/r8125/Makefile b/drivers/net/ethernet/realtek/r8125/Makefile
 new file mode 100644
-index 0000000000000..74eecbdd67f33
+index 0000000000000000000000000000000000000000..74eecbdd67f33a2048f779ea9f8e5015ab65c69e
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/Makefile
 @@ -0,0 +1,14 @@
@@ -192,7 +115,7 @@ index 0000000000000..74eecbdd67f33
 +ccflags-y += -DENABLE_RSS_SUPPORT
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125.h b/drivers/net/ethernet/realtek/r8125/r8125.h
 new file mode 100755
-index 0000000000000..e6948108da65d
+index 0000000000000000000000000000000000000000..e6948108da65d4011227da0e0046cdc8c41615a3
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125.h
 @@ -0,0 +1,3052 @@
@@ -3250,7 +3173,7 @@ index 0000000000000..e6948108da65d
 +#endif /* __R8125_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_dash.c b/drivers/net/ethernet/realtek/r8125/r8125_dash.c
 new file mode 100755
-index 0000000000000..a71c19aea4127
+index 0000000000000000000000000000000000000000..a71c19aea4127e1006a038fed7aedca69d832b3e
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_dash.c
 @@ -0,0 +1,573 @@
@@ -3829,7 +3752,7 @@ index 0000000000000..a71c19aea4127
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_dash.h b/drivers/net/ethernet/realtek/r8125/r8125_dash.h
 new file mode 100755
-index 0000000000000..1a4b7dae624c0
+index 0000000000000000000000000000000000000000..1a4b7dae624c0413f5be52489eabdc293a3bbc57
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_dash.h
 @@ -0,0 +1,196 @@
@@ -4031,7 +3954,7 @@ index 0000000000000..1a4b7dae624c0
 +#endif /* _LINUX_R8125_DASH_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_fiber.c b/drivers/net/ethernet/realtek/r8125/r8125_fiber.c
 new file mode 100755
-index 0000000000000..76527719bf9cc
+index 0000000000000000000000000000000000000000..76527719bf9cca20bd65e315ee40ccec24bb487e
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_fiber.c
 @@ -0,0 +1,464 @@
@@ -4501,7 +4424,7 @@ index 0000000000000..76527719bf9cc
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_fiber.h b/drivers/net/ethernet/realtek/r8125/r8125_fiber.h
 new file mode 100755
-index 0000000000000..3a328574f291d
+index 0000000000000000000000000000000000000000..3a328574f291de9041b6f4049049b6dd55dbf40c
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_fiber.h
 @@ -0,0 +1,63 @@
@@ -4570,7 +4493,7 @@ index 0000000000000..3a328574f291d
 +#endif /* _LINUX_R8125_FIBER_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_firmware.c b/drivers/net/ethernet/realtek/r8125/r8125_firmware.c
 new file mode 100755
-index 0000000000000..313c7d91b1c31
+index 0000000000000000000000000000000000000000..313c7d91b1c319fb3935dccc398900583b805ca9
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_firmware.c
 @@ -0,0 +1,264 @@
@@ -4840,7 +4763,7 @@ index 0000000000000..313c7d91b1c31
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_firmware.h b/drivers/net/ethernet/realtek/r8125/r8125_firmware.h
 new file mode 100755
-index 0000000000000..540c1d22f2817
+index 0000000000000000000000000000000000000000..540c1d22f28173ee0acf973f0a121937544e1f53
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_firmware.h
 @@ -0,0 +1,68 @@
@@ -4914,7 +4837,7 @@ index 0000000000000..540c1d22f2817
 +#endif /* _LINUX_rtl8125_FIRMWARE_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_n.c b/drivers/net/ethernet/realtek/r8125/r8125_n.c
 new file mode 100755
-index 0000000000000..73a1cbf1c37c6
+index 0000000000000000000000000000000000000000..73a1cbf1c37c66cc6ce4e68232ba0dbf9e936c3c
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_n.c
 @@ -0,0 +1,21349 @@
@@ -26269,7 +26192,7 @@ index 0000000000000..73a1cbf1c37c6
 +module_exit(rtl8125_cleanup_module);
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_ptp.c b/drivers/net/ethernet/realtek/r8125/r8125_ptp.c
 new file mode 100755
-index 0000000000000..457fa6d395d60
+index 0000000000000000000000000000000000000000..457fa6d395d6082f83711ebaee80adf446ad48ee
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_ptp.c
 @@ -0,0 +1,1472 @@
@@ -27747,7 +27670,7 @@ index 0000000000000..457fa6d395d60
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_ptp.h b/drivers/net/ethernet/realtek/r8125/r8125_ptp.h
 new file mode 100755
-index 0000000000000..3cd8b677fd604
+index 0000000000000000000000000000000000000000..3cd8b677fd604fec122f129b058b144cb20845f4
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_ptp.h
 @@ -0,0 +1,159 @@
@@ -27912,7 +27835,7 @@ index 0000000000000..3cd8b677fd604
 +#endif /* _LINUX_rtl8125_PTP_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_realwow.h b/drivers/net/ethernet/realtek/r8125/r8125_realwow.h
 new file mode 100755
-index 0000000000000..4b2315ebbb629
+index 0000000000000000000000000000000000000000..4b2315ebbb629bf0e1c93a6729ecc57f5c8e335f
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_realwow.h
 @@ -0,0 +1,118 @@
@@ -28036,7 +27959,7 @@ index 0000000000000..4b2315ebbb629
 +#endif /* _LINUX_R8125_REALWOW_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_rss.c b/drivers/net/ethernet/realtek/r8125/r8125_rss.c
 new file mode 100755
-index 0000000000000..bcdcab01a6ab5
+index 0000000000000000000000000000000000000000..bcdcab01a6ab5290efe76fa35d9b28b5216854a8
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_rss.c
 @@ -0,0 +1,583 @@
@@ -28625,7 +28548,7 @@ index 0000000000000..bcdcab01a6ab5
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/r8125_rss.h b/drivers/net/ethernet/realtek/r8125/r8125_rss.h
 new file mode 100755
-index 0000000000000..d2ec5f06c3f1d
+index 0000000000000000000000000000000000000000..d2ec5f06c3f1df588db1c01f4fcc657e71e911d0
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/r8125_rss.h
 @@ -0,0 +1,76 @@
@@ -28707,7 +28630,7 @@ index 0000000000000..d2ec5f06c3f1d
 +#endif /* _LINUX_rtl8125_RSS_H */
 diff --git a/drivers/net/ethernet/realtek/r8125/rtl_eeprom.c b/drivers/net/ethernet/realtek/r8125/rtl_eeprom.c
 new file mode 100755
-index 0000000000000..f1c2a1d12e3c5
+index 0000000000000000000000000000000000000000..f1c2a1d12e3c533bc6ce11e96d15a7903a0d9056
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/rtl_eeprom.c
 @@ -0,0 +1,284 @@
@@ -28997,7 +28920,7 @@ index 0000000000000..f1c2a1d12e3c5
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/rtl_eeprom.h b/drivers/net/ethernet/realtek/r8125/rtl_eeprom.h
 new file mode 100755
-index 0000000000000..7c154f2f4b487
+index 0000000000000000000000000000000000000000..7c154f2f4b4871f3e73ad6b8b35c4cf1b536f922
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/rtl_eeprom.h
 @@ -0,0 +1,53 @@
@@ -29056,7 +28979,7 @@ index 0000000000000..7c154f2f4b487
 +void rtl8125_set_eeprom_sel_low(struct rtl8125_private *tp);
 diff --git a/drivers/net/ethernet/realtek/r8125/rtltool.c b/drivers/net/ethernet/realtek/r8125/rtltool.c
 new file mode 100755
-index 0000000000000..8dd79e1800a5f
+index 0000000000000000000000000000000000000000..8dd79e1800a5fbd15c4bdab0616c570b6b665f77
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/rtltool.c
 @@ -0,0 +1,312 @@
@@ -29374,7 +29297,7 @@ index 0000000000000..8dd79e1800a5f
 +}
 diff --git a/drivers/net/ethernet/realtek/r8125/rtltool.h b/drivers/net/ethernet/realtek/r8125/rtltool.h
 new file mode 100755
-index 0000000000000..940be4fe7606f
+index 0000000000000000000000000000000000000000..940be4fe7606fad6d3dfedde606cda12d42b6efe
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8125/rtltool.h
 @@ -0,0 +1,89 @@
@@ -29469,7 +29392,7 @@ index 0000000000000..940be4fe7606f
 +#endif /* _LINUX_RTLTOOL_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/Kconfig b/drivers/net/ethernet/realtek/r8126/Kconfig
 new file mode 100644
-index 0000000000000..1ef611daa3fbf
+index 0000000000000000000000000000000000000000..1ef611daa3fbfcee3e04d0a4625092a2da69db01
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/Kconfig
 @@ -0,0 +1,10 @@
@@ -29485,7 +29408,7 @@ index 0000000000000..1ef611daa3fbf
 +	  will be called r8126.
 diff --git a/drivers/net/ethernet/realtek/r8126/Makefile b/drivers/net/ethernet/realtek/r8126/Makefile
 new file mode 100644
-index 0000000000000..03009d3b095ee
+index 0000000000000000000000000000000000000000..03009d3b095eef0a82dfecbea1915d87018c47e4
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/Makefile
 @@ -0,0 +1,14 @@
@@ -29505,7 +29428,7 @@ index 0000000000000..03009d3b095ee
 +ccflags-y += -DENABLE_RSS_SUPPORT
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126.h b/drivers/net/ethernet/realtek/r8126/r8126.h
 new file mode 100644
-index 0000000000000..be839a9c55a49
+index 0000000000000000000000000000000000000000..be839a9c55a49a7844d1667c8737c53ad4acff1f
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126.h
 @@ -0,0 +1,2976 @@
@@ -32487,7 +32410,7 @@ index 0000000000000..be839a9c55a49
 +#endif /* __R8126_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_dash.h b/drivers/net/ethernet/realtek/r8126/r8126_dash.h
 new file mode 100644
-index 0000000000000..40937ebcc4e31
+index 0000000000000000000000000000000000000000..40937ebcc4e310584c6a91063665b04c86efb7f3
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_dash.h
 @@ -0,0 +1,261 @@
@@ -32754,7 +32677,7 @@ index 0000000000000..40937ebcc4e31
 +#endif /* _LINUX_R8126_DASH_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_fiber.c b/drivers/net/ethernet/realtek/r8126/r8126_fiber.c
 new file mode 100644
-index 0000000000000..eceab2ac3097e
+index 0000000000000000000000000000000000000000..eceab2ac3097e31aa15191f64081cc838090a386
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_fiber.c
 @@ -0,0 +1,466 @@
@@ -33226,7 +33149,7 @@ index 0000000000000..eceab2ac3097e
 +}
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_fiber.h b/drivers/net/ethernet/realtek/r8126/r8126_fiber.h
 new file mode 100644
-index 0000000000000..182532da0fefc
+index 0000000000000000000000000000000000000000..182532da0fefcc681a4254a942f6d4e193501d0f
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_fiber.h
 @@ -0,0 +1,63 @@
@@ -33295,7 +33218,7 @@ index 0000000000000..182532da0fefc
 +#endif /* _LINUX_R8126_FIBER_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_firmware.c b/drivers/net/ethernet/realtek/r8126/r8126_firmware.c
 new file mode 100644
-index 0000000000000..84e52afe294af
+index 0000000000000000000000000000000000000000..84e52afe294afa1886a08f7d6868dbffe7eceef1
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_firmware.c
 @@ -0,0 +1,264 @@
@@ -33565,7 +33488,7 @@ index 0000000000000..84e52afe294af
 +}
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_firmware.h b/drivers/net/ethernet/realtek/r8126/r8126_firmware.h
 new file mode 100644
-index 0000000000000..7c2a344e34ac8
+index 0000000000000000000000000000000000000000..7c2a344e34ac8738400eac15163ffb0e09a09784
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_firmware.h
 @@ -0,0 +1,68 @@
@@ -33639,7 +33562,7 @@ index 0000000000000..7c2a344e34ac8
 +#endif /* _LINUX_R8126_FIRMWARE_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_n.c b/drivers/net/ethernet/realtek/r8126/r8126_n.c
 new file mode 100644
-index 0000000000000..55b989eb8fec1
+index 0000000000000000000000000000000000000000..55b989eb8fec16283864e02f62e2bd0b5a7234b5
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_n.c
 @@ -0,0 +1,17294 @@
@@ -50939,7 +50862,7 @@ index 0000000000000..55b989eb8fec1
 +module_exit(rtl8126_cleanup_module);
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_ptp.c b/drivers/net/ethernet/realtek/r8126/r8126_ptp.c
 new file mode 100644
-index 0000000000000..b453c88ec7441
+index 0000000000000000000000000000000000000000..b453c88ec74417fccc03a810b33984a403dc056b
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_ptp.c
 @@ -0,0 +1,954 @@
@@ -51899,7 +51822,7 @@ index 0000000000000..b453c88ec7441
 +#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0) */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_ptp.h b/drivers/net/ethernet/realtek/r8126/r8126_ptp.h
 new file mode 100644
-index 0000000000000..62366dd6ecda2
+index 0000000000000000000000000000000000000000..62366dd6ecda2765271c48f11e8e49bb9062e54c
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_ptp.h
 @@ -0,0 +1,207 @@
@@ -52112,7 +52035,7 @@ index 0000000000000..62366dd6ecda2
 +#endif /* _LINUX_R8126_PTP_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_realwow.h b/drivers/net/ethernet/realtek/r8126/r8126_realwow.h
 new file mode 100644
-index 0000000000000..b6d6f5710d50f
+index 0000000000000000000000000000000000000000..b6d6f5710d50f6ec7c0585c01244b1031143fd2c
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_realwow.h
 @@ -0,0 +1,118 @@
@@ -52236,7 +52159,7 @@ index 0000000000000..b6d6f5710d50f
 +#endif /* _LINUX_R8126_REALWOW_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_rss.c b/drivers/net/ethernet/realtek/r8126/r8126_rss.c
 new file mode 100644
-index 0000000000000..27996aa40cc63
+index 0000000000000000000000000000000000000000..27996aa40cc63856dd5ad8fd7e0805fd55ec54fd
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_rss.c
 @@ -0,0 +1,583 @@
@@ -52825,7 +52748,7 @@ index 0000000000000..27996aa40cc63
 +}
 diff --git a/drivers/net/ethernet/realtek/r8126/r8126_rss.h b/drivers/net/ethernet/realtek/r8126/r8126_rss.h
 new file mode 100644
-index 0000000000000..ee875fe4c8a06
+index 0000000000000000000000000000000000000000..ee875fe4c8a06e58116368aef04acd63a7650d05
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/r8126_rss.h
 @@ -0,0 +1,76 @@
@@ -52907,7 +52830,7 @@ index 0000000000000..ee875fe4c8a06
 +#endif /* _LINUX_R8126_RSS_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/rtl_eeprom.c b/drivers/net/ethernet/realtek/r8126/rtl_eeprom.c
 new file mode 100644
-index 0000000000000..7c47132075a3e
+index 0000000000000000000000000000000000000000..7c47132075a3eefda177db938e92ed32f3acdfd4
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/rtl_eeprom.c
 @@ -0,0 +1,285 @@
@@ -53198,7 +53121,7 @@ index 0000000000000..7c47132075a3e
 +}
 diff --git a/drivers/net/ethernet/realtek/r8126/rtl_eeprom.h b/drivers/net/ethernet/realtek/r8126/rtl_eeprom.h
 new file mode 100644
-index 0000000000000..ca7475a8d60ec
+index 0000000000000000000000000000000000000000..ca7475a8d60ecfb9bdb8ca6f68b950d27876b249
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/rtl_eeprom.h
 @@ -0,0 +1,58 @@
@@ -53262,7 +53185,7 @@ index 0000000000000..ca7475a8d60ec
 +#endif /* _LINUX_RTLEEPROM_H */
 diff --git a/drivers/net/ethernet/realtek/r8126/rtltool.c b/drivers/net/ethernet/realtek/r8126/rtltool.c
 new file mode 100644
-index 0000000000000..e5e1934dfdb39
+index 0000000000000000000000000000000000000000..e5e1934dfdb39b62b47eb0a094ffb79864a7980a
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/rtltool.c
 @@ -0,0 +1,293 @@
@@ -53561,7 +53484,7 @@ index 0000000000000..e5e1934dfdb39
 +}
 diff --git a/drivers/net/ethernet/realtek/r8126/rtltool.h b/drivers/net/ethernet/realtek/r8126/rtltool.h
 new file mode 100644
-index 0000000000000..2ef257d990c07
+index 0000000000000000000000000000000000000000..2ef257d990c078ed7c51183ef817993c86476944
 --- /dev/null
 +++ b/drivers/net/ethernet/realtek/r8126/rtltool.h
 @@ -0,0 +1,89 @@
@@ -53655,10 +53578,10 @@ index 0000000000000..2ef257d990c07
 +
 +#endif /* _LINUX_RTLTOOL_H */
 diff --git a/drivers/net/wireless/realtek/rtw89/fw.c b/drivers/net/wireless/realtek/rtw89/fw.c
-index c52f9e11a8b26..7198c4195d9a3 100644
+index 0099c5c03e7a63e5d4739eabec008867b586406f..054c9fc0b53c9f38df2164a29889c0d373d9d596 100644
 --- a/drivers/net/wireless/realtek/rtw89/fw.c
 +++ b/drivers/net/wireless/realtek/rtw89/fw.c
-@@ -9221,6 +9221,20 @@ int rtw89_hw_scan_offload(struct rtw89_dev *rtwdev,
+@@ -10542,6 +10542,20 @@ int rtw89_hw_scan_offload(struct rtw89_dev *rtwdev,
  	if (!rtwvif_link)
  		return -EINVAL;
  
@@ -53679,7 +53602,7 @@ index c52f9e11a8b26..7198c4195d9a3 100644
  	connected = rtwdev->scan_info.connected;
  	opt.enable = enable;
  	opt.target_ch_mode = connected;
-@@ -9244,7 +9258,22 @@ int rtw89_hw_scan_offload(struct rtw89_dev *rtwdev,
+@@ -10565,7 +10579,22 @@ int rtw89_hw_scan_offload(struct rtw89_dev *rtwdev,
  		opt.opch_end = connected ? 0 : RTW89_CHAN_INVALID;
  	}
  
@@ -53703,7 +53626,7 @@ index c52f9e11a8b26..7198c4195d9a3 100644
  out:
  	return ret;
 diff --git a/drivers/net/wireless/realtek/rtw89/ps.c b/drivers/net/wireless/realtek/rtw89/ps.c
-index aad2ee7926d67..2f8b8af05791c 100644
+index 31bb5dcd284aeca6518e4595ccad04718b2c9907..0f2809c2a5d0d0b90f697bbb0e5f56bb70e5ee8e 100644
 --- a/drivers/net/wireless/realtek/rtw89/ps.c
 +++ b/drivers/net/wireless/realtek/rtw89/ps.c
 @@ -76,18 +76,31 @@ static int rtw89_fw_leave_lps_check(struct rtw89_dev *rtwdev, u8 macid)

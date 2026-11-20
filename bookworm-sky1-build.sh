@@ -6,7 +6,7 @@
 # Usage: ./bookworm-sky1-build.sh [options]
 #
 # Options:
-#   --kernel <track>      Track à compiler, fichier config/kernels/<track>.conf (défaut : 7.3.1-stable)
+#   --kernel <track>      Track à compiler, fichier config/kernels/<track>.conf (défaut : 7.3.5-stable)
 #   --base-config <path>  Config kernel de base (défaut: config du kernel Ubuntu stock le plus récent)
 #   --build-dir <path>    Répertoire de build (défaut: /usr/src/build/sky1-kernel)
 #   --jobs <n>            Nombre de jobs parallèles (défaut: nproc)
@@ -21,7 +21,7 @@
 #
 # Exemple:
 #   ./bookworm-sky1-build.sh --install
-#   ./bookworm-sky1-build.sh --kernel 7.3.1-stable --skip-download --install
+#   ./bookworm-sky1-build.sh --kernel 7.3.5-stable --skip-download --install
 #
 # BOOKWORM — Kenny — OrangePi 6 Plus Sky1 Ubuntu
 # =============================================================================
@@ -48,7 +48,7 @@ die()     { echo -e "${RED}FATAL: $1${NC}" | tee -a "$LOG_FILE"; exit 1; }
 # =============================================================================
 # VALEURS PAR DÉFAUT
 # =============================================================================
-KERNEL_TRACK="7.3.1-stable"
+KERNEL_TRACK="7.3.5-stable"
 BASE_CONFIG=""
 BUILD_DIR="/usr/src/build/sky1-kernel"
 # distcc-env.sh exporte SKY1_JOBS (jobs locaux + distants) ; --jobs reste prioritaire
@@ -198,7 +198,7 @@ step "Étape 1/6 — Sources kernel + Sky1 patches"
 if ! $SKIP_DOWNLOAD; then
 
     # Cloner/mettre à jour linux-sky1 (seulement si le track en a encore besoin :
-    # 7.3.1-stable prend sa série et sa config Sky1 dans ce dépôt)
+    # 7.3.5-stable prend sa série et sa config Sky1 dans ce dépôt)
     if [[ -n "${SKY1_PATCHES_LOCAL:-}" && -n "${SKY1_CONFIG_LOCAL:-}" ]]; then
         ok "Série et config Sky1 locales (${SKY1_PATCHES_LOCAL}, ${SKY1_CONFIG_LOCAL}) : linux-sky1 inutile"
     elif [[ -d "$SKY1_DIR/.git" ]]; then
@@ -264,7 +264,7 @@ step "Étape 2/6 — Série Sky1 (${SKY1_TRACK})"
 
 if ! $SKIP_PATCHES; then
     PATCHES_SRC="$SKY1_DIR/${SKY1_PATCHES_DIR}"
-    # Série portée maintenue dans ce dépôt (ex. patches/sky1-7.2 : linux-sky1 n'a pas de série 7.2)
+    # Série portée maintenue dans ce dépôt (ex. patches/sky1-7.3.5 : linux-sky1 n'a pas de série 7.3)
     [[ -n "${SKY1_PATCHES_LOCAL:-}" ]] && PATCHES_SRC="$SCRIPT_DIR/${SKY1_PATCHES_LOCAL}"
     [[ -d "$PATCHES_SRC" ]] || die "Patches introuvables: $PATCHES_SRC"
 
